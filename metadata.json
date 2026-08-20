@@ -1,0 +1,8 @@
+{
+  "name": "CADEPLOY L&D Operations Management System",
+  "description": "Enterprise Learning & Development Operations Management System featuring employee training master records, Pre/Post/Module assessments, multi-attempt PKT evaluations, batch nominations, attendance tracking, competency progression, and training impact analytics.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
