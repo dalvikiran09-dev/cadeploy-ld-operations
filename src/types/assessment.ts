@@ -145,13 +145,15 @@ export interface TrainingPKT {
 
 export type EmployeeProfileTab = 
   | 'overview' 
-  | 'history' 
+  | 'training' 
   | 'attendance' 
   | 'assessments' 
   | 'pkts' 
-  | 'skill-matrix'
-  | 'programs' 
-  | 'competencies';
+  | 'skills'
+  | 'history'
+  | 'programs'
+  | 'competencies'
+  | 'skill-matrix';
 
 export interface EmployeeConsolidatedRecord {
   id: string;
@@ -276,8 +278,58 @@ export interface EmployeeImportRow {
   errors: string[];
 }
 
+export interface EmployeeImportErrorDetail {
+  row: number;
+  employeeCode?: string;
+  employeeName?: string;
+  department?: string;
+  designation?: string;
+  location?: string;
+  email?: string;
+  phone?: string;
+  employeeType?: string;
+  managerName?: string;
+  joiningDate?: string;
+  errorCode?: string;
+  error: string;
+  reason: string;
+  retryAttempts?: number;
+  lastAttemptStatus?: 'PENDING' | 'RETRYING' | 'SUCCESS' | 'FAILED';
+  originalRowData?: Partial<TrainingEmployee>;
+}
+
+export interface EmployeeImportChunkLog {
+  chunkIndex: number;
+  totalChunks: number;
+  rowRange: string;
+  count?: number;
+  recordCount?: number;
+  status: 'SUCCESS' | 'FAILED';
+  error?: string;
+  errorMessage?: string;
+  errorCode?: string;
+  errorDetails?: string;
+  errorHint?: string;
+  durationMs?: number;
+  retryAttempts?: number;
+  isSubChunk?: boolean;
+}
+
+export interface EmployeeSampleVerification {
+  employeeCode: string;
+  employeeName: string;
+  foundInDb?: boolean;
+  foundInDatabase?: boolean;
+  department?: string;
+  designation?: string;
+}
+
 export interface EmployeeImportResult {
   success: boolean;
+  status: 'SUCCESS' | 'PARTIAL' | 'FAILED';
+  isTableMissing?: boolean;
+  missingTableMessage?: string;
+  databaseErrorCode?: string;
   fileName: string;
   importedBy: string;
   timestamp: string;
@@ -286,13 +338,59 @@ export interface EmployeeImportResult {
   updated: number;
   skipped: number;
   failed: number;
-  errors: Array<{
-    row: number;
-    employeeCode?: string;
-    employeeName?: string;
-    error: string;
-    reason: string;
-  }>;
+  verifiedDbCount?: number;
+  distinctDbCount?: number;
+  duplicateCount?: number;
+  initialStats?: {
+    rowsRead: number;
+    added: number;
+    updated: number;
+    skipped: number;
+    failed: number;
+  };
+  retryStats?: {
+    attempted: number;
+    successful: number;
+    failed: number;
+  };
+  runtimeConfig?: {
+    supabaseUrl: string;
+    projectRef: string;
+    isConfigured?: boolean;
+    connectivity: 'PASS' | 'FAIL';
+    tableStatus: 'FOUND' | 'NOT_FOUND';
+    connectivityError?: string;
+  };
+  singleTestUpsertResult?: {
+    employeeCode: string;
+    employeeName: string;
+    success: boolean;
+    errorCode?: string;
+    errorMessage?: string;
+    errorDetails?: string;
+    errorHint?: string;
+  };
+  chunkLogs?: EmployeeImportChunkLog[];
+  sampleVerifications?: EmployeeSampleVerification[];
+  errors: EmployeeImportErrorDetail[];
   unmappedColumns: string[];
+}
+
+export interface EmployeeStatusBreakdown {
+  active: number;
+  inactive: number;
+  onLeave: number;
+  transferred: number;
+  exited: number;
+  other: number;
+  allStatuses: Record<string, number>;
+}
+
+export interface EmployeeDatabaseDiagnostics {
+  totalCount: number;
+  distinctCount: number;
+  duplicateCount: number;
+  statusBreakdown: EmployeeStatusBreakdown;
+  sampleVerifications: EmployeeSampleVerification[];
 }
 

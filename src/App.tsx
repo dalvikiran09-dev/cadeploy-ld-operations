@@ -3,6 +3,7 @@ import { AppProvider, useApp } from './context/AppContext';
 import { TrainingProvider } from './context/TrainingContext';
 import { BatchProvider } from './context/BatchContext';
 import { AssessmentProvider } from './context/AssessmentContext';
+import { CompetencyProvider } from './context/CompetencyContext';
 import { Sidebar } from './components/layout/Sidebar';
 import { Header } from './components/layout/Header';
 import { LoginModal } from './components/auth/LoginModal';
@@ -125,7 +126,9 @@ export default function App() {
       <TrainingProvider>
         <BatchProvider>
           <AssessmentProvider>
-            <AppContent />
+            <CompetencyProvider>
+              <AppContent />
+            </CompetencyProvider>
           </AssessmentProvider>
         </BatchProvider>
       </TrainingProvider>
