@@ -128,6 +128,40 @@ export const FIELD_SYNONYMS: Record<keyof EmployeeColumnMapping, string[]> = {
     'start date',
     'hire date',
     'joining_date'
+  ],
+  employeeType: [
+    'employeetype',
+    'employee type',
+    'employment type',
+    'employmenttype',
+    'type',
+    'category',
+    'staff type'
+  ],
+  managerName: [
+    'managername',
+    'manager name',
+    'manager',
+    'reporting manager',
+    'reporting manager name',
+    'supervisor',
+    'lead'
+  ],
+  phone: [
+    'phone',
+    'phonenumber',
+    'phone number',
+    'mobile',
+    'mobile number',
+    'contact',
+    'contact number'
+  ],
+  status: [
+    'status',
+    'employee status',
+    'employeestatus',
+    'current status',
+    'employment status'
   ]
 };
 

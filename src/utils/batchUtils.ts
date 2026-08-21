@@ -1176,6 +1176,77 @@ export const resolveEmployeeName = (empCode?: string, users: any[] = [], storedN
 };
 
 /**
+ * Resolve employee details (name, department, designation, email, location)
+ * from Employee Master (AssessmentContext) or User list with fallback
+ */
+export const resolveEmployeeDetails = (
+  employeeCode?: string,
+  employeesOrUsers: any[] = [],
+  fallbackUsers: any[] = [],
+  fallbackDefaults?: { employeeName?: string; department?: string; designation?: string; location?: string }
+): { name: string; employeeName: string; department: string; designation: string; location?: string; email?: string } => {
+  if (!employeeCode) {
+    return {
+      name: fallbackDefaults?.employeeName || 'Unknown',
+      employeeName: fallbackDefaults?.employeeName || 'Unknown',
+      department: fallbackDefaults?.department || 'Operations',
+      designation: fallbackDefaults?.designation || 'Employee',
+      location: fallbackDefaults?.location || 'Hyderabad'
+    };
+  }
+  const cleanCode = employeeCode.trim().toUpperCase();
+
+  // 1. Search in first array (usually employees from AssessmentContext or users)
+  const empMatch = employeesOrUsers.find(e => 
+    e.employeeCode?.toUpperCase() === cleanCode || 
+    e.id?.toUpperCase() === cleanCode || 
+    (e.username && e.username.toUpperCase() === cleanCode)
+  );
+
+  if (empMatch) {
+    const resolvedName = empMatch.name || empMatch.employeeName || employeeCode;
+    return {
+      name: resolvedName,
+      employeeName: resolvedName,
+      department: empMatch.department || fallbackDefaults?.department || 'Operations',
+      designation: empMatch.designation || fallbackDefaults?.designation || 'Engineer',
+      location: empMatch.location || fallbackDefaults?.location || 'Hyderabad',
+      email: empMatch.email || ''
+    };
+  }
+
+  // 2. Search in fallback users array
+  const userMatch = fallbackUsers.find(u => 
+    (u.username && u.username.toUpperCase() === cleanCode) || 
+    u.id === employeeCode ||
+    u.id?.toUpperCase() === cleanCode ||
+    (u.employeeCode && u.employeeCode.toUpperCase() === cleanCode) ||
+    (u.name && u.name.toUpperCase() === cleanCode)
+  );
+
+  if (userMatch) {
+    const resolvedName = userMatch.name || userMatch.employeeName || employeeCode;
+    return {
+      name: resolvedName,
+      employeeName: resolvedName,
+      department: userMatch.department || fallbackDefaults?.department || 'Operations',
+      designation: (userMatch as any).designation || fallbackDefaults?.designation || 'Employee',
+      location: (userMatch as any).location || fallbackDefaults?.location || 'Hyderabad',
+      email: userMatch.email || ''
+    };
+  }
+
+  const finalName = fallbackDefaults?.employeeName || employeeCode;
+  return {
+    name: finalName,
+    employeeName: finalName,
+    department: fallbackDefaults?.department || 'Operations',
+    designation: fallbackDefaults?.designation || 'Employee',
+    location: fallbackDefaults?.location || 'Hyderabad'
+  };
+};
+
+/**
  * Export Batch to Excel Workbook (.xlsx) matching exact structure of BTCH0000000002.xlsx
  * Includes 5 sheets: BatchData, NominationData, BatchSchedule, Attendance, Attendance Summary
  */

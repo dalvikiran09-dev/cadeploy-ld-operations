@@ -3,6 +3,7 @@ import ExcelJS from 'exceljs';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { Task, User, TaskCategory, TaskStatus, Priority } from '../types';
+import { Employee } from '../types/assessment';
 import { 
   TrainingProgram, 
   TrainingModule, 
@@ -738,7 +739,8 @@ export function calculateTrainingReportMetrics(
   attendance: TrainingAttendanceRecord[],
   users: User[],
   periodOptions: ReportFilterOptions,
-  trainingFilters?: TrainingReportFilterOptions
+  trainingFilters?: TrainingReportFilterOptions,
+  employees?: Employee[]
 ) {
   const {
     filteredPrograms,
@@ -909,11 +911,12 @@ export function calculateTrainingReportMetrics(
     const prog = programs.find(p => p.programCode.toUpperCase() === (batch?.programCode || '').toUpperCase());
     const user = users.find(u => u.username?.toUpperCase() === a.employeeCode.toUpperCase() || u.id === a.employeeCode);
     const nominee = nominees.find(n => n.employeeCode.toUpperCase() === a.employeeCode.toUpperCase() && (n.batchId === a.batchId || n.batchCode === a.batchCode));
+    const empMaster = employees?.find(e => e.employeeCode?.toUpperCase() === a.employeeCode?.toUpperCase() || e.id === a.employeeCode);
 
     return {
       employeeCode: a.employeeCode,
-      employeeName: nominee?.employeeName || user?.name || a.employeeCode,
-      department: user?.department || 'Operations',
+      employeeName: empMaster?.employeeName || nominee?.employeeName || user?.name || a.employeeCode,
+      department: empMaster?.department || user?.department || 'Operations',
       programCode: batch?.programCode || '—',
       programName: prog?.programName || batch?.programName || '—',
       batchCode: a.batchCode || batch?.batchCode || '—',

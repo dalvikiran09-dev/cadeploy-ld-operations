@@ -130,49 +130,76 @@ export const formatFullDateTimeString = (d: Date = new Date()): string => {
 };
 
 /**
- * Resolve employee name and department from nominees or users list
+ * Resolve employee name, department, designation, and location from Employee Master, users, or nominees
  */
 export const resolveEmployeeDetails = (
   employeeCode: string,
-  users: User[] = [],
-  nominees: BatchNominee[] = []
-): { name: string; department: string; designation: string; avatar?: string } => {
+  employeesOrUsers: any[] = [],
+  fallbackUsersOrNominees: any[] = [],
+  fallbackDefaults?: { employeeName?: string; department?: string; designation?: string; location?: string }
+): { name: string; employeeName: string; department: string; designation: string; location?: string; avatar?: string; email?: string } => {
   if (!employeeCode) {
-    return { name: 'Unknown', department: 'Tekla', designation: 'Employee' };
+    return {
+      name: fallbackDefaults?.employeeName || 'Unknown',
+      employeeName: fallbackDefaults?.employeeName || 'Unknown',
+      department: fallbackDefaults?.department || 'Operations',
+      designation: fallbackDefaults?.designation || 'Employee',
+      location: fallbackDefaults?.location || 'Hyderabad'
+    };
   }
 
   const cleanCode = employeeCode.trim().toUpperCase();
 
-  // 1. Try matching user by username or id
-  const user = users.find(u => 
+  // 1. Try matching in primary array (e.g. employees from AssessmentContext or users)
+  const empMatch = employeesOrUsers.find(e => 
+    e.employeeCode?.toUpperCase() === cleanCode || 
+    e.id?.toUpperCase() === cleanCode || 
+    (e.username && e.username.toUpperCase() === cleanCode)
+  );
+
+  if (empMatch) {
+    const resolvedName = empMatch.name || empMatch.employeeName || employeeCode;
+    return {
+      name: resolvedName,
+      employeeName: resolvedName,
+      department: empMatch.department || fallbackDefaults?.department || 'Operations',
+      designation: empMatch.designation || fallbackDefaults?.designation || 'Engineer',
+      location: empMatch.location || fallbackDefaults?.location || 'Hyderabad',
+      avatar: empMatch.avatar,
+      email: empMatch.email
+    };
+  }
+
+  // 2. Try matching in fallback array (e.g. users or nominees)
+  const userMatch = fallbackUsersOrNominees.find(u => 
     (u.username && u.username.toUpperCase() === cleanCode) ||
     u.id === employeeCode ||
+    u.id?.toUpperCase() === cleanCode ||
+    (u.employeeCode && u.employeeCode.toUpperCase() === cleanCode) ||
     (u.name && u.name.toUpperCase() === cleanCode)
   );
 
-  if (user) {
+  if (userMatch) {
+    const resolvedName = userMatch.name || userMatch.employeeName || employeeCode;
     return {
-      name: user.name,
-      department: user.department || 'Tekla',
-      designation: user.designation || 'Team Member',
-      avatar: user.avatar
+      name: resolvedName,
+      employeeName: resolvedName,
+      department: userMatch.department || fallbackDefaults?.department || 'Operations',
+      designation: userMatch.designation || fallbackDefaults?.designation || 'Team Member',
+      location: userMatch.location || fallbackDefaults?.location || 'Hyderabad',
+      avatar: userMatch.avatar,
+      email: userMatch.email
     };
   }
 
-  // 2. Try matching from nominee data
-  const nominee = nominees.find(n => n.employeeCode && n.employeeCode.toUpperCase() === cleanCode);
-  if (nominee && nominee.employeeName) {
-    return {
-      name: nominee.employeeName,
-      department: nominee.department || 'Tekla',
-      designation: nominee.designation || 'Nominee'
-    };
-  }
-
+  // 3. Use default fallback values or code
+  const finalName = fallbackDefaults?.employeeName || employeeCode;
   return {
-    name: employeeCode,
-    department: 'Tekla',
-    designation: 'Employee'
+    name: finalName,
+    employeeName: finalName,
+    department: fallbackDefaults?.department || 'Operations',
+    designation: fallbackDefaults?.designation || 'Employee',
+    location: fallbackDefaults?.location || 'Hyderabad'
   };
 };
 
