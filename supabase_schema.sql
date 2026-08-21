@@ -1091,7 +1091,172 @@ BEGIN
   BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE public.training_pkts; EXCEPTION WHEN OTHERS THEN NULL; END;
 END $;
 
+-- ==============================================================================
+-- 12. DEPARTMENT COMPETENCY & SKILLS ARCHITECTURE
+-- ==============================================================================
+
+-- 1. Training Departments Table
+CREATE TABLE IF NOT EXISTS public.training_departments (
+  id TEXT PRIMARY KEY,
+  department_name TEXT NOT NULL UNIQUE,
+  code TEXT NOT NULL,
+  status TEXT DEFAULT 'Active',
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 2. Training Framework Versions Table
+CREATE TABLE IF NOT EXISTS public.training_framework_versions (
+  id TEXT PRIMARY KEY,
+  department_id TEXT REFERENCES public.training_departments(id) ON DELETE CASCADE,
+  version TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'Draft',
+  authorization_date TEXT DEFAULT 'TBD',
+  effective_date TEXT,
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now(),
+  CONSTRAINT training_framework_dept_ver_unique UNIQUE (department_id, version)
+);
+
+-- 3. Training Competencies Library Table
+CREATE TABLE IF NOT EXISTS public.training_competencies (
+  id TEXT PRIMARY KEY,
+  department_id TEXT REFERENCES public.training_departments(id) ON DELETE CASCADE,
+  code TEXT NOT NULL,
+  name TEXT NOT NULL,
+  description TEXT DEFAULT '',
+  tier TEXT NOT NULL DEFAULT 'Functional', -- 'Core' | 'Functional' | 'Leadership'
+  status TEXT DEFAULT 'Active',
+  framework_version TEXT DEFAULT 'V1.0',
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_training_competencies_dept ON public.training_competencies(department_id);
+CREATE INDEX IF NOT EXISTS idx_training_competencies_tier ON public.training_competencies(tier);
+
+-- 4. Training Competency Levels Table (4 Behavioral Levels)
+CREATE TABLE IF NOT EXISTS public.training_competency_levels (
+  id TEXT PRIMARY KEY,
+  competency_id TEXT REFERENCES public.training_competencies(id) ON DELETE CASCADE,
+  level INTEGER NOT NULL, -- 1, 2, 3, 4
+  level_name TEXT NOT NULL, -- 'Novice', 'Developing', 'Proficient', 'Expert'
+  behavior_description TEXT NOT NULL,
+  framework_version TEXT DEFAULT 'V1.0',
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now(),
+  CONSTRAINT training_competency_lvl_unique UNIQUE (competency_id, level, framework_version)
+);
+
+CREATE INDEX IF NOT EXISTS idx_training_competency_levels_comp ON public.training_competency_levels(competency_id);
+
+-- 5. Training Roles Table
+CREATE TABLE IF NOT EXISTS public.training_roles (
+  id TEXT PRIMARY KEY,
+  department_id TEXT REFERENCES public.training_departments(id) ON DELETE CASCADE,
+  role_name TEXT NOT NULL,
+  status TEXT DEFAULT 'Active',
+  framework_version TEXT DEFAULT 'V1.0',
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_training_roles_dept ON public.training_roles(department_id);
+
+-- 6. Training Role Competencies & Priority Skills Mapping Table
+CREATE TABLE IF NOT EXISTS public.training_role_competencies (
+  id TEXT PRIMARY KEY,
+  department_id TEXT REFERENCES public.training_departments(id) ON DELETE CASCADE,
+  role_id TEXT REFERENCES public.training_roles(id) ON DELETE CASCADE,
+  competency_id TEXT REFERENCES public.training_competencies(id) ON DELETE CASCADE,
+  required_level INTEGER NOT NULL DEFAULT 1, -- 1, 2, 3, 4
+  is_priority_skill BOOLEAN DEFAULT false,
+  priority_order INTEGER DEFAULT 0,
+  weight NUMERIC DEFAULT 1.0,
+  status TEXT DEFAULT 'Active',
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now(),
+  CONSTRAINT training_role_comp_unique UNIQUE (role_id, competency_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_training_role_comp_role ON public.training_role_competencies(role_id);
+CREATE INDEX IF NOT EXISTS idx_training_role_comp_priority ON public.training_role_competencies(role_id, is_priority_skill);
+
+-- 7. Training Employee Competency Assessments Table
+CREATE TABLE IF NOT EXISTS public.training_employee_competency_assessments (
+  id TEXT PRIMARY KEY,
+  employee_code TEXT NOT NULL,
+  department_id TEXT REFERENCES public.training_departments(id) ON DELETE SET NULL,
+  role_id TEXT REFERENCES public.training_roles(id) ON DELETE SET NULL,
+  competency_id TEXT REFERENCES public.training_competencies(id) ON DELETE CASCADE,
+  framework_version TEXT DEFAULT 'V1.0',
+  required_level INTEGER NOT NULL DEFAULT 1,
+  assessed_level INTEGER NOT NULL DEFAULT 0, -- 0 = Not Assessed, 1, 2, 3, 4
+  assessment_date TEXT NOT NULL,
+  assessed_by TEXT NOT NULL,
+  evidence TEXT DEFAULT '',
+  remarks TEXT DEFAULT '',
+  recommended_program_id TEXT,
+  recommended_program_code TEXT,
+  recommended_program_name TEXT,
+  recommended_module_id TEXT,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_training_emp_comp_assess_emp ON public.training_employee_competency_assessments(employee_code);
+CREATE INDEX IF NOT EXISTS idx_training_emp_comp_assess_dept ON public.training_employee_competency_assessments(department_id);
+CREATE INDEX IF NOT EXISTS idx_training_emp_comp_assess_comp ON public.training_employee_competency_assessments(competency_id);
+
+-- Enable RLS
+ALTER TABLE public.training_departments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.training_framework_versions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.training_competencies ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.training_competency_levels ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.training_roles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.training_role_competencies ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.training_employee_competency_assessments ENABLE ROW LEVEL SECURITY;
+
+DO $
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'training_departments_all_access') THEN
+    CREATE POLICY "training_departments_all_access" ON public.training_departments FOR ALL TO public USING (true) WITH CHECK (true);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'training_framework_versions_all_access') THEN
+    CREATE POLICY "training_framework_versions_all_access" ON public.training_framework_versions FOR ALL TO public USING (true) WITH CHECK (true);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'training_competencies_all_access') THEN
+    CREATE POLICY "training_competencies_all_access" ON public.training_competencies FOR ALL TO public USING (true) WITH CHECK (true);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'training_competency_levels_all_access') THEN
+    CREATE POLICY "training_competency_levels_all_access" ON public.training_competency_levels FOR ALL TO public USING (true) WITH CHECK (true);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'training_roles_all_access') THEN
+    CREATE POLICY "training_roles_all_access" ON public.training_roles FOR ALL TO public USING (true) WITH CHECK (true);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'training_role_competencies_all_access') THEN
+    CREATE POLICY "training_role_competencies_all_access" ON public.training_role_competencies FOR ALL TO public USING (true) WITH CHECK (true);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'training_emp_comp_assess_all_access') THEN
+    CREATE POLICY "training_emp_comp_assess_all_access" ON public.training_employee_competency_assessments FOR ALL TO public USING (true) WITH CHECK (true);
+  END IF;
+END $$;
+
+-- Enable Realtime
+DO $
+BEGIN
+  BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE public.training_departments; EXCEPTION WHEN OTHERS THEN NULL; END;
+  BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE public.training_framework_versions; EXCEPTION WHEN OTHERS THEN NULL; END;
+  BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE public.training_competencies; EXCEPTION WHEN OTHERS THEN NULL; END;
+  BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE public.training_competency_levels; EXCEPTION WHEN OTHERS THEN NULL; END;
+  BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE public.training_roles; EXCEPTION WHEN OTHERS THEN NULL; END;
+  BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE public.training_role_competencies; EXCEPTION WHEN OTHERS THEN NULL; END;
+  BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE public.training_employee_competency_assessments; EXCEPTION WHEN OTHERS THEN NULL; END;
+END $;
+
 NOTIFY pgrst, 'reload schema';
+
 
 
 
