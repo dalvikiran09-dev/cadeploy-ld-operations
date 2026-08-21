@@ -7,6 +7,7 @@ export type AssessmentType =
 
 export type AssessmentResult = 'Pass' | 'Fail' | 'Not Attempted';
 export type PKTResult = 'Pass' | 'Fail' | 'Not Attempted';
+export type EmployeeStatus = 'Active' | 'Inactive' | 'On Leave' | 'Transferred' | 'Exited';
 
 export interface TrainingEmployee {
   id: string;
@@ -15,14 +16,75 @@ export interface TrainingEmployee {
   department: string;
   designation: string;
   location?: string;
-  email?: string;
+  employeeType?: string;
   joiningDate?: string;
-  status: 'Active' | 'Inactive';
+  managerName?: string;
+  email?: string;
+  phone?: string;
+  status: EmployeeStatus;
   targetCompetencies?: string;
   currentLevels?: string;
   avatar?: string;
+  additionalFields?: Record<string, any>;
   createdAt: string;
   updatedAt: string;
+}
+
+export type Employee = TrainingEmployee;
+
+export type SkillLevelNumber = 1 | 2 | 3 | 4 | 0; // 0 for Not Assessed
+
+export interface DepartmentSkillConfig {
+  id: string;
+  departmentName: string;
+  skill1: string;
+  requiredLevel1: number;
+  skill2: string;
+  requiredLevel2: number;
+  skill3: string;
+  requiredLevel3: number;
+  skill4?: string;
+  requiredLevel4?: number;
+  skill5?: string;
+  requiredLevel5?: number;
+  status: 'Active' | 'Inactive';
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type SkillGapStatus = 'Meets Requirement' | 'Development Needed' | 'Significant Gap' | 'Not Assessed';
+
+export interface EmployeeSkillAssessment {
+  id: string;
+  employeeCode: string;
+  employeeName?: string;
+  department: string;
+  skillName: string;
+  skillIndex: number; // 1 to 5
+  currentLevel: number; // 1 to 4, 0 for Not Assessed
+  requiredLevel: number; // 1 to 4
+  gap: number; // max(0, requiredLevel - currentLevel)
+  status: SkillGapStatus;
+  trainingRequired: boolean;
+  recommendedProgramCode?: string;
+  recommendedProgramName?: string;
+  assessmentDate: string;
+  assessedBy: string;
+  remarks?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SkillAssessmentHistoryRecord {
+  id: string;
+  employeeCode: string;
+  department: string;
+  skillName: string;
+  level: number;
+  assessmentDate: string;
+  assessedBy: string;
+  remarks?: string;
+  createdAt: string;
 }
 
 export interface TrainingAssessment {
@@ -87,6 +149,7 @@ export type EmployeeProfileTab =
   | 'attendance' 
   | 'assessments' 
   | 'pkts' 
+  | 'skill-matrix'
   | 'programs' 
   | 'competencies';
 
@@ -185,8 +248,12 @@ export interface EmployeeColumnMapping {
   department: string;
   designation: string;
   location: string;
+  employeeType?: string;
+  managerName?: string;
   email?: string;
+  phone?: string;
   joiningDate?: string;
+  status?: string;
 }
 
 export interface EmployeeImportRow {
@@ -197,9 +264,12 @@ export interface EmployeeImportRow {
   department?: string;
   designation?: string;
   location?: string;
+  employeeType?: string;
+  managerName?: string;
   email?: string;
+  phone?: string;
   joiningDate?: string;
-  status: 'Active' | 'Inactive';
+  status: EmployeeStatus;
   isExisting: boolean;
   action: 'insert' | 'update' | 'error';
   isValid: boolean;

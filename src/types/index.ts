@@ -192,6 +192,7 @@ export type ActiveTab =
   | 'batches'
   | 'attendance'
   | 'employees'
+  | 'skill-matrix'
   | 'calendar' 
   | 'gantt' 
   | 'reports' 

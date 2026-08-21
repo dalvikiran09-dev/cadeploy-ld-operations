@@ -16,6 +16,7 @@ import { TrainingView } from './components/training/TrainingView';
 import { BatchesView } from './components/batches/BatchesView';
 import { AttendanceView } from './components/attendance/AttendanceView';
 import { EmployeesView } from './components/employees/EmployeesView';
+import { SkillMatrixView } from './components/skillMatrix/SkillMatrixView';
 import { UserManagementView } from './components/users/UserManagementView';
 import { SettingsView } from './components/settings/SettingsView';
 import { GlobalSearchModal } from './components/search/GlobalSearchModal';
@@ -30,7 +31,7 @@ const AppContent: React.FC = () => {
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
 
   const isAllowedForManagement = (tab: ActiveTab): boolean => {
-    return tab === 'dashboard' || tab === 'training-dashboard' || tab === 'reports' || tab === 'employees';
+    return tab === 'dashboard' || tab === 'training-dashboard' || tab === 'reports' || tab === 'employees' || tab === 'skill-matrix';
   };
 
   // Direct URL / Route Protection for Management and Admin routes
@@ -84,6 +85,8 @@ const AppContent: React.FC = () => {
           {effectiveTab === 'attendance' && <AttendanceView />}
 
           {effectiveTab === 'employees' && <EmployeesView />}
+
+          {effectiveTab === 'skill-matrix' && <SkillMatrixView />}
 
           {effectiveTab === 'calendar' && <CalendarView />}
 

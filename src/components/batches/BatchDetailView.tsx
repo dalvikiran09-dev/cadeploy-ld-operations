@@ -28,6 +28,7 @@ import {
 import { useBatch } from '../../context/BatchContext';
 import { useTraining } from '../../context/TrainingContext';
 import { useApp } from '../../context/AppContext';
+import { useAssessment } from '../../context/AssessmentContext';
 import { hasPermission } from '../../utils/permissionUtils';
 import { 
   calculateBatchAttendanceStats, 
@@ -35,7 +36,8 @@ import {
   exportAttendanceReportToExcel, 
   formatBatchDateTime,
   formatBatchDateOnly,
-  resolveEmployeeName
+  resolveEmployeeName,
+  resolveEmployeeDetails
 } from '../../utils/batchUtils';
 import { AttendanceStatus, BatchScheduleActivity, BatchNominee } from '../../types/batch';
 import { UserAvatar } from '../common/UserAvatar';
@@ -63,7 +65,8 @@ export const BatchDetailView: React.FC = () => {
   } = useBatch();
 
   const { programs, modules } = useTraining();
-  const { users, currentUser } = useApp();
+  const { users, currentUser, setActiveTab } = useApp();
+  const { employees, setActiveEmployeeCode, setActiveProfileTab } = useAssessment();
 
   const canCreate = hasPermission(currentUser, 'TRAINING_CREATE');
   const canEdit = hasPermission(currentUser, 'TRAINING_EDIT');
@@ -631,14 +634,38 @@ export const BatchDetailView: React.FC = () => {
               </div>
               <div className="space-y-2">
                 {batchNominees.slice(0, 6).map(n => {
-                  const empName = resolveEmployeeName(n.employeeCode, users, n.employeeName);
+                  const empDetails = resolveEmployeeDetails(n.employeeCode, employees, users, {
+                    employeeName: n.employeeName,
+                    department: n.department,
+                    designation: n.designation
+                  });
                   return (
-                    <div key={n.id} className="flex items-center justify-between p-2 rounded-lg bg-slate-50 dark:bg-slate-800/40 text-xs">
-                      <div>
-                        <span className="font-mono font-bold text-slate-800 dark:text-slate-200">{n.employeeCode}</span>
-                        {empName && <span className="text-[10px] text-slate-400 block">{empName}</span>}
+                    <div 
+                      key={n.id} 
+                      onClick={() => {
+                        setActiveEmployeeCode(n.employeeCode);
+                        setActiveProfileTab('overview');
+                        setActiveTab('employees');
+                      }}
+                      className="flex items-center justify-between p-2 rounded-lg bg-slate-50 dark:bg-slate-800/40 hover:bg-blue-50/50 dark:hover:bg-blue-950/30 transition-colors text-xs cursor-pointer group"
+                    >
+                      <div className="flex items-center gap-2">
+                        <UserAvatar name={empDetails.employeeName || n.employeeCode} size="sm" className="w-6 h-6 shrink-0" />
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-mono font-bold text-slate-800 dark:text-slate-200 group-hover:text-blue-600 transition-colors">
+                              {n.employeeCode}
+                            </span>
+                            <span className="text-[10px] text-slate-400">
+                              • {empDetails.department}
+                            </span>
+                          </div>
+                          <span className="text-[11px] font-medium text-slate-700 dark:text-slate-300 block">
+                            {empDetails.employeeName}
+                          </span>
+                        </div>
                       </div>
-                      <span className="text-[10px] text-slate-400">{n.targetCompetencies || 'Nominated'}</span>
+                      <span className="text-[10px] text-slate-400 shrink-0">{n.targetCompetencies || 'Nominated'}</span>
                     </div>
                   );
                 })}
@@ -665,7 +692,7 @@ export const BatchDetailView: React.FC = () => {
                 type="text"
                 value={nomineeSearch}
                 onChange={e => setNomineeSearch(e.target.value)}
-                placeholder="Search by Employee ID, Name, or Competency..."
+                placeholder="Search by Employee ID, Name, Department, or Competency..."
                 className="w-full px-3.5 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-blue-500"
               />
             </div>
@@ -706,6 +733,7 @@ export const BatchDetailView: React.FC = () => {
                     <tr className="bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider text-[11px]">
                       <th className="py-3 px-4">Employee ID</th>
                       <th className="py-3 px-4">Employee Name</th>
+                      <th className="py-3 px-4">Department & Role</th>
                       <th className="py-3 px-4">Nominated By</th>
                       <th className="py-3 px-4">Nomination Date/Time</th>
                       <th className="py-3 px-4">Target Competency / KPI</th>
@@ -718,26 +746,40 @@ export const BatchDetailView: React.FC = () => {
                     {filteredNominees.map(n => {
                       const empStats = stats.nomineeBreakdown[n.employeeCode];
                       const rate = empStats?.rate ?? 0;
-                      const empName = resolveEmployeeName(n.employeeCode, users, n.employeeName);
+                      const empDetails = resolveEmployeeDetails(n.employeeCode, employees, users, {
+                        employeeName: n.employeeName,
+                        department: n.department,
+                        designation: n.designation
+                      });
 
                       return (
                         <tr key={n.id} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors">
                           <td className="py-3 px-4">
-                            <span className="font-mono font-bold text-blue-600 dark:text-blue-400">
-                              {n.employeeCode}
-                            </span>
+                            <button
+                              onClick={() => {
+                                setActiveEmployeeCode(n.employeeCode);
+                                setActiveProfileTab('overview');
+                                setActiveTab('employees');
+                              }}
+                              className="font-mono font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 cursor-pointer"
+                              title="View Employee Profile"
+                            >
+                              <span>{n.employeeCode}</span>
+                              <ExternalLink className="w-3 h-3 opacity-60" />
+                            </button>
                           </td>
                           <td className="py-3 px-4 text-slate-800 dark:text-slate-200">
                             <div className="flex items-center gap-2.5">
-                              <UserAvatar name={empName || n.employeeCode} size="sm" className="w-6 h-6" />
+                              <UserAvatar name={empDetails.employeeName || n.employeeCode} size="sm" className="w-6 h-6 shrink-0" />
                               <div>
-                                {empName ? (
-                                  <span className="font-bold">{empName}</span>
-                                ) : (
-                                  <span className="text-slate-400 italic">Unassigned Name</span>
-                                )}
+                                <span className="font-bold block">{empDetails.employeeName}</span>
+                                <span className="text-[10px] text-slate-400">{empDetails.location}</span>
                               </div>
                             </div>
+                          </td>
+                          <td className="py-3 px-4 text-slate-600 dark:text-slate-400">
+                            <div className="font-medium text-slate-700 dark:text-slate-300">{empDetails.department}</div>
+                            <div className="text-[10px] text-slate-400">{empDetails.designation}</div>
                           </td>
                           <td className="py-3 px-4 font-mono text-slate-600 dark:text-slate-400">
                             {n.nominatorEmployeeCode || '—'}

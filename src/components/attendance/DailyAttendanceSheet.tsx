@@ -24,6 +24,7 @@ import {
 import { useBatch } from '../../context/BatchContext';
 import { useApp } from '../../context/AppContext';
 import { useTraining } from '../../context/TrainingContext';
+import { useAssessment } from '../../context/AssessmentContext';
 import { UserAvatar } from '../common/UserAvatar';
 import { 
   TrainingBatch, 
@@ -73,6 +74,7 @@ export const DailyAttendanceSheet: React.FC<DailyAttendanceSheetProps> = ({
     isSyncing 
   } = useBatch();
   const { users, currentUser } = useApp();
+  const { employees } = useAssessment();
   const { programs, modules, courses } = useTraining();
 
   const canEdit = canManageAttendance(currentUser?.role);
@@ -673,7 +675,7 @@ export const DailyAttendanceSheet: React.FC<DailyAttendanceSheetProps> = ({
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {filteredNominees.map((nom, index) => {
-                  const details = resolveEmployeeDetails(nom.employeeCode, users, batchNominees);
+                  const details = resolveEmployeeDetails(nom.employeeCode, employees, users);
                   const codeKey = nom.employeeCode.toUpperCase();
                   const draft = drafts[codeKey] || {
                     employeeCode: nom.employeeCode,

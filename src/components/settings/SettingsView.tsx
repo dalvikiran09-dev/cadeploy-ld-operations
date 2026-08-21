@@ -4,6 +4,7 @@ import {
   Settings, Download, Upload, RotateCcw, Building, Moon, Sun, 
   Database, Shield, Save, CheckCircle2, Tag, Plus, Edit, Trash2
 } from 'lucide-react';
+import { SupabaseDatabaseDiagnosticPanel } from '../common/SupabaseDatabaseDiagnosticPanel';
 
 export const SettingsView: React.FC = () => {
   const { 
@@ -103,6 +104,9 @@ export const SettingsView: React.FC = () => {
           Manage system branding, L&D operational categories, appearance themes, database backups, and restore operations.
         </p>
       </div>
+
+      {/* Production Supabase Health & Diagnostic Status */}
+      <SupabaseDatabaseDiagnosticPanel />
 
       {savedSuccess && (
         <div className="p-4 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-900 rounded-xl text-xs text-emerald-800 dark:text-emerald-200 font-semibold flex items-center gap-2">

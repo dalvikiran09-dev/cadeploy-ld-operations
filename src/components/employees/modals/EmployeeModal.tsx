@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { X, UserCheck, AlertCircle, Save } from 'lucide-react';
+import { X, UserCheck, AlertCircle, Save, Trash2 } from 'lucide-react';
 import { useAssessment } from '../../../context/AssessmentContext';
 import { useApp } from '../../../context/AppContext';
-import { TrainingEmployee } from '../../../types/assessment';
+import { TrainingEmployee, EmployeeStatus } from '../../../types/assessment';
 import { 
   MAIN_DEPARTMENTS, 
   PEMB_SUB_DEPARTMENTS, 
@@ -22,7 +22,7 @@ export const EmployeeModal: React.FC<EmployeeModalProps> = ({
   onClose,
   employeeToEdit
 }) => {
-  const { addEmployee, updateEmployee } = useAssessment();
+  const { addEmployee, updateEmployee, deleteEmployee } = useAssessment();
   const { currentUser } = useApp();
 
   const [employeeCode, setEmployeeCode] = useState('');
@@ -31,12 +31,16 @@ export const EmployeeModal: React.FC<EmployeeModalProps> = ({
   const [subDepartment, setSubDepartment] = useState('');
   const [designation, setDesignation] = useState('Tekla Trainee');
   const [location, setLocation] = useState('Hyderabad');
+  const [employeeType, setEmployeeType] = useState('Full-Time');
+  const [managerName, setManagerName] = useState('');
   const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
   const [joiningDate, setJoiningDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [status, setStatus] = useState<'Active' | 'Inactive'>('Active');
+  const [status, setStatus] = useState<EmployeeStatus>('Active');
   const [targetCompetencies, setTargetCompetencies] = useState('Tekla Structural Detailing, Connection Checking, GA Drawings');
   const [currentLevels, setCurrentLevels] = useState('Level 1 - Foundational');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -57,7 +61,10 @@ export const EmployeeModal: React.FC<EmployeeModalProps> = ({
 
         setDesignation(employeeToEdit.designation || 'Trainee');
         setLocation(employeeToEdit.location || 'Hyderabad');
+        setEmployeeType(employeeToEdit.employeeType || 'Full-Time');
+        setManagerName(employeeToEdit.managerName || '');
         setEmail(employeeToEdit.email || '');
+        setPhone(employeeToEdit.phone || '');
         setJoiningDate(employeeToEdit.joiningDate || new Date().toISOString().slice(0, 10));
         setStatus(employeeToEdit.status || 'Active');
         setTargetCompetencies(employeeToEdit.targetCompetencies || '');
@@ -69,7 +76,10 @@ export const EmployeeModal: React.FC<EmployeeModalProps> = ({
         setSubDepartment('');
         setDesignation('Tekla Trainee');
         setLocation('Hyderabad');
+        setEmployeeType('Full-Time');
+        setManagerName('');
         setEmail('');
+        setPhone('');
         setJoiningDate(new Date().toISOString().slice(0, 10));
         setStatus('Active');
         setTargetCompetencies('Tekla Structural Detailing, Connection Checking, GA Drawings');
@@ -105,7 +115,10 @@ export const EmployeeModal: React.FC<EmployeeModalProps> = ({
       department: resolvedDepartment,
       designation: designation.trim(),
       location: location.trim() || undefined,
+      employeeType: employeeType.trim() || undefined,
+      managerName: managerName.trim() || undefined,
       email: email.trim() || undefined,
+      phone: phone.trim() || undefined,
       joiningDate: joiningDate || undefined,
       status: status,
       targetCompetencies: targetCompetencies.trim() || undefined,
@@ -127,9 +140,27 @@ export const EmployeeModal: React.FC<EmployeeModalProps> = ({
     }
   };
 
+  const handleDelete = async () => {
+    if (!employeeToEdit) return;
+    const confirm = window.confirm(`Are you sure you want to delete employee ${employeeToEdit.employeeCode} - ${employeeToEdit.employeeName}?`);
+    if (!confirm) return;
+
+    setIsDeleting(true);
+    setError(null);
+
+    const res = await deleteEmployee(employeeToEdit.id);
+    setIsDeleting(false);
+
+    if (res.success) {
+      onClose();
+    } else {
+      setError(res.error || 'Cannot delete employee.');
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-      <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-lg w-full border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-xl w-full border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
         {/* Header */}
         <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50/70 dark:bg-slate-800/50">
           <div className="flex items-center gap-3">
@@ -138,10 +169,10 @@ export const EmployeeModal: React.FC<EmployeeModalProps> = ({
             </div>
             <div>
               <h2 className="text-lg font-bold text-slate-900 dark:text-white">
-                {employeeToEdit ? 'Edit Employee Profile' : 'Register New Employee / Trainee'}
+                {employeeToEdit ? 'Edit Employee Profile' : 'Register New Employee / HR Master'}
               </h2>
               <p className="text-xs text-slate-500">
-                Individual training master record & competency tracking
+                Authoritative employee master record & competency tracking
               </p>
             </div>
           </div>
@@ -215,7 +246,7 @@ export const EmployeeModal: React.FC<EmployeeModalProps> = ({
               </select>
             </div>
 
-            {department === 'PEMB' && (
+            {department === 'PEMB' ? (
               <div>
                 <label className="block text-xs font-bold text-blue-600 dark:text-blue-400 mb-1">
                   PEMB Sub-Division *
@@ -232,17 +263,62 @@ export const EmployeeModal: React.FC<EmployeeModalProps> = ({
                   ))}
                 </select>
               </div>
+            ) : (
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Designation
+                </label>
+                <input
+                  type="text"
+                  value={designation}
+                  onChange={e => setDesignation(e.target.value)}
+                  placeholder="e.g. Tekla Detailer Trainee"
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-medium focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+            )}
+
+            {department === 'PEMB' && (
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Designation
+                </label>
+                <input
+                  type="text"
+                  value={designation}
+                  onChange={e => setDesignation(e.target.value)}
+                  placeholder="e.g. Tekla Detailer Trainee"
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-medium focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
             )}
 
             <div>
               <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                Designation
+                Employment Type
+              </label>
+              <select
+                value={employeeType}
+                onChange={e => setEmployeeType(e.target.value)}
+                className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-medium"
+              >
+                <option value="Full-Time">Full-Time</option>
+                <option value="Contractor">Contractor</option>
+                <option value="Intern">Intern</option>
+                <option value="Probation">Probation</option>
+                <option value="Trainee">Trainee</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                Reporting Manager
               </label>
               <input
                 type="text"
-                value={designation}
-                onChange={e => setDesignation(e.target.value)}
-                placeholder="e.g. Tekla Detailer Trainee"
+                value={managerName}
+                onChange={e => setManagerName(e.target.value)}
+                placeholder="e.g. Suresh Kumar"
                 className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-medium focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
             </div>
@@ -275,6 +351,19 @@ export const EmployeeModal: React.FC<EmployeeModalProps> = ({
 
             <div>
               <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                Phone Number
+              </label>
+              <input
+                type="tel"
+                value={phone}
+                onChange={e => setPhone(e.target.value)}
+                placeholder="+91 9876543210"
+                className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-medium focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                 Joining Date
               </label>
               <input
@@ -283,6 +372,23 @@ export const EmployeeModal: React.FC<EmployeeModalProps> = ({
                 onChange={e => setJoiningDate(e.target.value)}
                 className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-medium focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                Employment Status
+              </label>
+              <select
+                value={status}
+                onChange={e => setStatus(e.target.value as EmployeeStatus)}
+                className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-medium"
+              >
+                <option value="Active">Active</option>
+                <option value="Inactive">Inactive</option>
+                <option value="On Leave">On Leave</option>
+                <option value="Transferred">Transferred</option>
+                <option value="Exited">Exited</option>
+              </select>
             </div>
           </div>
 
@@ -299,64 +405,64 @@ export const EmployeeModal: React.FC<EmployeeModalProps> = ({
             />
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                Current Skill Level
-              </label>
-              <select
-                value={currentLevels}
-                onChange={e => setCurrentLevels(e.target.value)}
-                className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-medium"
-              >
-                <option value="Level 1 - Foundational">Level 1 - Foundational</option>
-                <option value="Level 2 - Intermediate">Level 2 - Intermediate</option>
-                <option value="Level 3 - Advanced / Production Ready">Level 3 - Advanced / Production Ready</option>
-                <option value="Level 4 - Lead Specialist">Level 4 - Lead Specialist</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                Employment Status
-              </label>
-              <select
-                value={status}
-                onChange={e => setStatus(e.target.value as 'Active' | 'Inactive')}
-                className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-medium"
-              >
-                <option value="Active">Active</option>
-                <option value="Inactive">Inactive</option>
-              </select>
-            </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+              Current Skill Level
+            </label>
+            <select
+              value={currentLevels}
+              onChange={e => setCurrentLevels(e.target.value)}
+              className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-medium"
+            >
+              <option value="Level 1 - Foundational">Level 1 - Foundational</option>
+              <option value="Level 2 - Intermediate">Level 2 - Intermediate</option>
+              <option value="Level 3 - Advanced / Production Ready">Level 3 - Advanced / Production Ready</option>
+              <option value="Level 4 - Lead Specialist">Level 4 - Lead Specialist</option>
+            </select>
           </div>
 
           {/* Footer */}
-          <div className="pt-4 border-t border-slate-200 dark:border-slate-800 flex items-center justify-end gap-3">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="px-5 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 active:bg-blue-800 rounded-xl transition-all shadow-md shadow-blue-500/20 flex items-center gap-2 cursor-pointer disabled:opacity-50"
-            >
-              {isSubmitting ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  <span>Saving...</span>
-                </>
-              ) : (
-                <>
-                  <Save className="w-4 h-4" />
-                  <span>{employeeToEdit ? 'Update Profile' : 'Create Profile'}</span>
-                </>
+          <div className="pt-4 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3">
+            <div>
+              {employeeToEdit && (
+                <button
+                  type="button"
+                  onClick={handleDelete}
+                  disabled={isDeleting || isSubmitting}
+                  className="px-3.5 py-2 text-xs font-bold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  <span>{isDeleting ? 'Deleting...' : 'Delete Employee'}</span>
+                </button>
               )}
-            </button>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isSubmitting || isDeleting}
+                className="px-5 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 active:bg-blue-800 rounded-xl transition-all shadow-md shadow-blue-500/20 flex items-center gap-2 cursor-pointer disabled:opacity-50"
+              >
+                {isSubmitting ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span>Saving...</span>
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-4 h-4" />
+                    <span>{employeeToEdit ? 'Update Profile' : 'Create Profile'}</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </form>
       </div>

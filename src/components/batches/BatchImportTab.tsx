@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { 
   UploadCloud, 
   FileSpreadsheet, 
@@ -13,16 +13,21 @@ import {
   RefreshCw, 
   ArrowRight,
   ShieldCheck,
-  FileCheck
+  FileCheck,
+  Server,
+  AlertCircle
 } from 'lucide-react';
 import { useBatch } from '../../context/BatchContext';
 import { useTraining } from '../../context/TrainingContext';
+import { useAssessment } from '../../context/AssessmentContext';
 import { parseBatchExcelWorkbook, generateSampleBatchTemplate } from '../../utils/batchUtils';
 import { BatchImportParseResult } from '../../types/batch';
+import { SupabaseDatabaseDiagnosticPanel } from '../common/SupabaseDatabaseDiagnosticPanel';
 
 export const BatchImportTab: React.FC = () => {
-  const { executeBatchImport, setActiveSubTab, setSelectedBatchId, batches } = useBatch();
+  const { executeBatchImport, setActiveSubTab, batches } = useBatch();
   const { programs } = useTraining();
+  const { employees } = useAssessment();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
@@ -31,6 +36,8 @@ export const BatchImportTab: React.FC = () => {
   const [isImporting, setIsImporting] = useState(false);
   const [parseResult, setParseResult] = useState<BatchImportParseResult | null>(null);
   const [importSuccessMessage, setImportSuccessMessage] = useState<string | null>(null);
+  const [importErrorMessage, setImportErrorMessage] = useState<string | null>(null);
+  const [showDiagnosticPanel, setShowDiagnosticPanel] = useState(false);
 
   const handleFile = async (file: File) => {
     if (!file.name.match(/\.(xlsx|xls)$/i)) {
@@ -42,12 +49,13 @@ export const BatchImportTab: React.FC = () => {
     setIsParsing(true);
     setParseResult(null);
     setImportSuccessMessage(null);
+    setImportErrorMessage(null);
 
     try {
       const result = await parseBatchExcelWorkbook(file, batches);
       setParseResult(result);
     } catch (err: any) {
-      alert(`Error parsing Excel file: ${err.message || 'Invalid format'}`);
+      setImportErrorMessage(`Error parsing Excel file: ${err.message || 'Invalid format'}`);
     } finally {
       setIsParsing(false);
     }
@@ -61,23 +69,53 @@ export const BatchImportTab: React.FC = () => {
     }
   };
 
+  // Check HR Master validation for nominees
+  const hrValidation = useMemo(() => {
+    if (!parseResult || !parseResult.nominees) return { missingEmployees: [], matchedCount: 0 };
+
+    const empCodeSet = new Set(employees.map(e => e.employeeCode.trim().toUpperCase()));
+    const missing: string[] = [];
+    let matched = 0;
+
+    parseResult.nominees.forEach(nom => {
+      const code = (nom.employeeCode || '').trim().toUpperCase();
+      if (!code) return;
+      if (empCodeSet.size > 0 && !empCodeSet.has(code)) {
+        if (!missing.includes(code)) {
+          missing.push(code);
+        }
+      } else {
+        matched++;
+      }
+    });
+
+    return { missingEmployees: missing, matchedCount: matched };
+  }, [parseResult, employees]);
+
   const handleExecuteImport = async () => {
     if (!parseResult || !selectedFile) return;
 
     setIsImporting(true);
-    const res = await executeBatchImport(parseResult, selectedFile.name, 'Admin');
-    setIsImporting(false);
+    setImportErrorMessage(null);
+    
+    try {
+      const res = await executeBatchImport(parseResult, selectedFile.name, 'Admin');
+      setIsImporting(false);
 
-    if (res.success) {
-      const log = res.importLog;
-      const bCount = log ? (log.newBatches + log.updatedBatches) : parseResult.batches.length;
-      const sCount = log ? log.schedulesAdded : parseResult.schedules.length;
-      const nCount = log ? log.nomineesAdded : parseResult.nominees.length;
-      const aCount = log ? log.attendanceRecordsAdded : parseResult.attendance.length;
+      if (res.success) {
+        const log = res.importLog;
+        const bCount = log ? (log.newBatches + log.updatedBatches) : parseResult.batches.length;
+        const sCount = log ? log.schedulesAdded : parseResult.schedules.length;
+        const nCount = log ? log.nomineesAdded : parseResult.nominees.length;
+        const aCount = log ? log.attendanceRecordsAdded : parseResult.attendance.length;
 
-      setImportSuccessMessage(`Successfully imported ${bCount} batch(es), ${sCount} schedule activities, ${nCount} nominees, and ${aCount} attendance records!`);
-    } else {
-      alert(`Import failed: ${res.error}`);
+        setImportSuccessMessage(`Successfully imported ${bCount} batch(es), ${sCount} schedule activities, ${nCount} nominees, and ${aCount} attendance records directly into the production database!`);
+      } else {
+        setImportErrorMessage(res.error || 'Import failed with an unexpected error');
+      }
+    } catch (err: any) {
+      setIsImporting(false);
+      setImportErrorMessage(`Database error during import: ${err?.message || 'Transaction aborted'}`);
     }
   };
 
@@ -85,6 +123,7 @@ export const BatchImportTab: React.FC = () => {
     setSelectedFile(null);
     setParseResult(null);
     setImportSuccessMessage(null);
+    setImportErrorMessage(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
@@ -98,18 +137,35 @@ export const BatchImportTab: React.FC = () => {
             <span>Excel Batch Import Wizard</span>
           </h2>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-2xl leading-relaxed">
-            Import full training batches, schedule activities, employee nominations, and attendance records from multi-sheet Excel files (matching standard structure: <strong>BatchData</strong>, <strong>BatchSchedule</strong>, <strong>NominationData</strong>, <strong>Attendance</strong>).
+            Import full training batches, schedule activities, employee nominations, and attendance records from multi-sheet Excel files (matching standard structure: <strong>BatchData</strong>, <strong>BatchSchedule</strong>, <strong>NominationData</strong>, <strong>Attendance</strong>) directly into the Supabase database.
           </p>
         </div>
 
-        <button
-          onClick={() => generateSampleBatchTemplate(programs)}
-          className="px-4 py-2.5 text-xs font-semibold rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-all flex items-center gap-2 shadow-2xs shrink-0"
-        >
-          <Download className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-          <span>Download Excel Template (.xlsx)</span>
-        </button>
+        <div className="flex items-center gap-2.5 flex-wrap shrink-0">
+          <button
+            onClick={() => setShowDiagnosticPanel(!showDiagnosticPanel)}
+            className="px-3.5 py-2.5 text-xs font-semibold rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-all flex items-center gap-1.5 cursor-pointer"
+          >
+            <Server className="w-4 h-4 text-blue-600" />
+            <span>{showDiagnosticPanel ? 'Hide Diagnostic' : 'DB Diagnostic'}</span>
+          </button>
+
+          <button
+            onClick={() => generateSampleBatchTemplate(programs)}
+            className="px-4 py-2.5 text-xs font-semibold rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-all flex items-center gap-2 shadow-2xs shrink-0 cursor-pointer"
+          >
+            <Download className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+            <span>Download Excel Template (.xlsx)</span>
+          </button>
+        </div>
       </div>
+
+      {/* Optional Embedded Diagnostic Panel */}
+      {showDiagnosticPanel && (
+        <div className="animate-in fade-in duration-200">
+          <SupabaseDatabaseDiagnosticPanel compact={false} />
+        </div>
+      )}
 
       {/* Success Notification */}
       {importSuccessMessage && (
@@ -128,16 +184,54 @@ export const BatchImportTab: React.FC = () => {
               <div className="flex items-center gap-3 mt-4">
                 <button
                   onClick={() => setActiveSubTab('list')}
-                  className="px-4 py-2 text-xs font-semibold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-500/20 transition-all flex items-center gap-1.5"
+                  className="px-4 py-2 text-xs font-semibold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-500/20 transition-all flex items-center gap-1.5 cursor-pointer"
                 >
                   <span>View All Batches</span>
                   <ArrowRight className="w-3.5 h-3.5" />
                 </button>
                 <button
                   onClick={handleReset}
-                  className="px-4 py-2 text-xs font-semibold rounded-xl bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-50"
+                  className="px-4 py-2 text-xs font-semibold rounded-xl bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 cursor-pointer"
                 >
                   Import Another File
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Error Notification */}
+      {importErrorMessage && (
+        <div className="p-6 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 shadow-xs animate-in fade-in duration-150">
+          <div className="flex items-start gap-4">
+            <div className="p-2.5 rounded-xl bg-rose-100 dark:bg-rose-900 text-rose-600 dark:text-rose-400">
+              <AlertCircle className="w-6 h-6" />
+            </div>
+            <div className="flex-1 space-y-2">
+              <h3 className="text-base font-bold text-rose-900 dark:text-rose-200">
+                Import Failed
+              </h3>
+              <p className="text-xs text-rose-700 dark:text-rose-400 font-mono bg-white dark:bg-slate-900 p-3 rounded-lg border border-rose-200 dark:border-rose-800">
+                {importErrorMessage}
+              </p>
+              <p className="text-xs text-slate-600 dark:text-slate-400">
+                You can review table permissions and schema via the <strong>DB Diagnostic</strong> panel above.
+              </p>
+              <div className="flex items-center gap-3 pt-2">
+                <button
+                  onClick={handleExecuteImport}
+                  disabled={isImporting}
+                  className="px-4 py-2 text-xs font-semibold rounded-xl bg-rose-600 hover:bg-rose-700 text-white shadow transition-all flex items-center gap-1.5 cursor-pointer"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isImporting ? 'animate-spin' : ''}`} />
+                  <span>Retry Import</span>
+                </button>
+                <button
+                  onClick={() => setImportErrorMessage(null)}
+                  className="px-4 py-2 text-xs font-semibold rounded-xl bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 cursor-pointer"
+                >
+                  Dismiss
                 </button>
               </div>
             </div>
@@ -185,7 +279,7 @@ export const BatchImportTab: React.FC = () => {
               4 Sheets Required
             </span>
             <span className="px-3 py-1 text-[11px] font-bold rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
-              Instant Validation
+              HR Master Check
             </span>
           </div>
         </div>
@@ -212,7 +306,7 @@ export const BatchImportTab: React.FC = () => {
 
               <button
                 onClick={handleReset}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
                 title="Cancel and choose another file"
               >
                 <X className="w-5 h-5" />
@@ -323,14 +417,34 @@ export const BatchImportTab: React.FC = () => {
               </div>
             </div>
 
-            {/* Warnings or Errors */}
-            {parseResult.warnings && parseResult.warnings.length > 0 && (
-              <div className="mt-4 p-4 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-xs text-amber-800 dark:text-amber-300 space-y-1">
+            {/* HR Master Missing Employee Verification Notice */}
+            {hrValidation.missingEmployees.length > 0 && (
+              <div className="mt-4 p-4 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-xs text-amber-900 dark:text-amber-200 space-y-1.5">
                 <div className="font-bold flex items-center gap-1.5">
                   <AlertTriangle className="w-4 h-4 text-amber-600" />
+                  <span>HR Master Reference Notice ({hrValidation.missingEmployees.length} unrecognized employee IDs)</span>
+                </div>
+                <div className="text-[11px] text-amber-800 dark:text-amber-300">
+                  {hrValidation.missingEmployees.map(code => (
+                    <div key={code} className="font-mono py-0.5">
+                      • Employee ID <strong className="font-bold">{code}</strong> not found in HR Master.
+                    </div>
+                  ))}
+                </div>
+                <p className="text-[10px] text-amber-700 dark:text-amber-400 pt-1">
+                  Nominee records will be linked, but employee profiles should be registered in the HR Master for comprehensive competency tracking.
+                </p>
+              </div>
+            )}
+
+            {/* General Parser Warnings or Errors */}
+            {parseResult.warnings && parseResult.warnings.length > 0 && (
+              <div className="mt-4 p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-xs text-slate-700 dark:text-slate-300 space-y-1">
+                <div className="font-bold flex items-center gap-1.5 text-slate-900 dark:text-white">
+                  <ShieldCheck className="w-4 h-4 text-blue-600" />
                   <span>Validation Warnings ({parseResult.warnings.length})</span>
                 </div>
-                <ul className="list-disc list-inside space-y-0.5 pl-1">
+                <ul className="list-disc list-inside space-y-0.5 pl-1 text-[11px]">
                   {parseResult.warnings.map((w, idx) => (
                     <li key={idx}>{w}</li>
                   ))}
@@ -342,17 +456,17 @@ export const BatchImportTab: React.FC = () => {
             <div className="mt-6 pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-end gap-3">
               <button
                 onClick={handleReset}
-                className="px-4 py-2.5 text-xs font-semibold rounded-xl text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                className="px-4 py-2.5 text-xs font-semibold rounded-xl text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 onClick={handleExecuteImport}
                 disabled={isImporting || parseResult.batches.length === 0}
-                className="px-6 py-2.5 text-xs font-semibold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-500/20 transition-all flex items-center gap-2 disabled:opacity-50"
+                className="px-6 py-2.5 text-xs font-semibold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-500/20 transition-all flex items-center gap-2 disabled:opacity-50 cursor-pointer"
               >
                 <Check className="w-4 h-4" />
-                <span>{isImporting ? 'Importing to Database...' : 'Confirm & Import to System'}</span>
+                <span>{isImporting ? 'Importing to Supabase Database...' : 'Confirm & Import to System'}</span>
               </button>
             </div>
           </div>

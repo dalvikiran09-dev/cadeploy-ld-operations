@@ -46,6 +46,7 @@ import {
 import { useTraining } from '../../context/TrainingContext';
 import { useBatch } from '../../context/BatchContext';
 import { useApp } from '../../context/AppContext';
+import { useAssessment } from '../../context/AssessmentContext';
 
 interface Props {
   periodOptions: ReportFilterOptions;
@@ -55,6 +56,7 @@ export const TrainingReportSection: React.FC<Props> = ({ periodOptions }) => {
   const { programs, modules, courses } = useTraining();
   const { batches, schedules, nominees, attendance } = useBatch();
   const { users } = useApp();
+  const { employees } = useAssessment();
 
   // Secondary training filters
   const [trainingFilters, setTrainingFilters] = useState<TrainingReportFilterOptions>({
@@ -81,9 +83,10 @@ export const TrainingReportSection: React.FC<Props> = ({ periodOptions }) => {
       attendance,
       users,
       periodOptions,
-      trainingFilters
+      trainingFilters,
+      employees
     );
-  }, [programs, modules, courses, batches, schedules, nominees, attendance, users, periodOptions, trainingFilters]);
+  }, [programs, modules, courses, batches, schedules, nominees, attendance, users, periodOptions, trainingFilters, employees]);
 
   const { kpis, programSummaryList, batchSummaryList, attendanceSummaryList, chartsData, periodRange } = trainingData;
 

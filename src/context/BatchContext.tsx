@@ -39,8 +39,11 @@ async function executeWithSchemaRetry<T = any>(
 
     const err = result.error;
     const match = err.message?.match(/Could not find the '([^']+)' column/i) || 
+                  err.message?.match(/Could not find the "([^"]+)" column/i) ||
                   err.message?.match(/column "([^"]+)" of relation "[^"]+" does not exist/i) ||
-                  err.message?.match(/column "([^"]+)" does not exist/i);
+                  err.message?.match(/column '([^']+)' of relation '[^']+' does not exist/i) ||
+                  err.message?.match(/column "([^"]+)" does not exist/i) ||
+                  err.message?.match(/column '([^']+)' does not exist/i);
 
     if (match && match[1]) {
       const missingColumn = match[1];
@@ -90,15 +93,25 @@ const mapBatchFromDb = (row: any): TrainingBatch => ({
 const mapBatchToDb = (b: TrainingBatch) => ({
   id: b.id,
   batch_code: b.batchCode,
+  program_id: b.programId || null,
   program_code: b.programCode,
   program_name: b.programName || null,
+  batch_type: b.batchType || 'Regular',
   batch_location: b.batchLocation || 'Hyderabad',
   facilitator_code: b.facilitatorCode || null,
+  facilitator_name: b.facilitatorName || null,
+  facilitator_email: b.facilitatorEmail || null,
   batch_created_date: b.batchCreatedDate || null,
+  program_requested_date: b.programRequestedDate || null,
+  program_request_accepted_date: b.programRequestAcceptedDate || null,
+  program_requested_start_date: b.programRequestedStartDate || null,
+  program_proposed_start_date: b.programProposedStartDate || null,
+  schedule_code: b.scheduleCode || null,
   head_count: Number(b.headCount || 0),
   status: b.status || 'Planned',
   created_at: b.createdAt || new Date().toISOString(),
-  updated_at: b.updatedAt || new Date().toISOString()
+  updated_at: b.updatedAt || new Date().toISOString(),
+  deleted: Boolean(b.deleted)
 });
 
 const mapScheduleFromDb = (row: any): BatchScheduleActivity => ({
@@ -122,9 +135,13 @@ const mapScheduleToDb = (s: BatchScheduleActivity) => ({
   id: s.id,
   batch_id: s.batchId,
   batch_code: s.batchCode || '',
+  day_number: Number(s.dayNumber || 1),
   activity_date: s.activityDate || '',
   activity: s.activity || 'Delivery Session',
+  module_id: s.moduleId || null,
   module_code: s.moduleCode || '-',
+  module_name: s.moduleName || null,
+  duration_hours: Number(s.durationHours || 0),
   status: s.status || 'Completed',
   arrangements: s.arrangements || 'Completed',
   created_at: s.createdAt || new Date().toISOString(),
@@ -155,6 +172,9 @@ const mapNomineeToDb = (n: BatchNominee) => ({
   batch_code: n.batchCode || '',
   employee_code: n.employeeCode,
   employee_name: n.employeeName || null,
+  department: n.department || null,
+  designation: n.designation || null,
+  email: n.email || null,
   nominator_employee_code: n.nominatorEmployeeCode || null,
   nomination_datetime: n.nominationDatetime || null,
   target_competencies: n.targetCompetencies || null,
@@ -187,13 +207,14 @@ const mapAttendanceToDb = (a: TrainingAttendanceRecord) => ({
   batch_id: a.batchId,
   batch_code: a.batchCode || null,
   employee_code: a.employeeCode,
+  module_id: a.moduleId || null,
   module_code: a.moduleCode,
   session_date: a.sessionDate || null,
   reported_datetime: a.reportedDatetime || null,
   intermittent_exit_time: a.intermittentExitTime || null,
   intermittent_entry_time: a.intermittentEntryTime || null,
   completed_datetime: a.completedDatetime || null,
-  status: a.status,
+  status: a.status || 'Attended',
   remarks: a.remarks || null,
   created_at: a.createdAt || new Date().toISOString(),
   updated_at: a.updatedAt || new Date().toISOString()
@@ -221,14 +242,18 @@ const mapImportHistoryToDb = (h: BatchImportHistoryRecord) => ({
   imported_at: h.importedAt,
   imported_by: h.importedBy,
   batch_codes: Array.isArray(h.batchCodes) ? h.batchCodes : [],
+  new_records: Number(h.newBatches || 0),
+  updated_records: Number(h.updatedBatches || 0),
   new_batches: Number(h.newBatches || 0),
   updated_batches: Number(h.updatedBatches || 0),
   schedules_added: Number(h.schedulesAdded || 0),
   nominees_added: Number(h.nomineesAdded || 0),
   attendance_records_added: Number(h.attendanceRecordsAdded || 0),
   error_count: Number(h.errorCount || 0),
-  status: h.status,
-  details: h.details || {}
+  status: h.status || 'Success',
+  details: h.details || {},
+  created_at: h.importedAt || new Date().toISOString(),
+  updated_at: new Date().toISOString()
 });
 
 interface BatchContextType {
@@ -1574,7 +1599,7 @@ export const BatchProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           if (batchErr) {
             console.error('Import Step 1 (Batches) Failed:', batchErr);
             setIsSyncing(false);
-            return { success: false, error: `Batch import failed: ${batchErr.message}` };
+            return { success: false, error: `Step 1 (Batches) Failed: [${batchErr.code || 'DB_ERR'}] ${batchErr.message}` };
           }
         }
 
@@ -1588,6 +1613,8 @@ export const BatchProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
           if (schErr) {
             console.error('Import Step 2 (Schedules) Failed:', schErr);
+            setIsSyncing(false);
+            return { success: false, error: `Step 2 (Schedules) Failed: [${schErr.code || 'DB_ERR'}] ${schErr.message}` };
           }
         }
 
@@ -1601,6 +1628,8 @@ export const BatchProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
           if (nomErr) {
             console.error('Import Step 3 (Nominees) Failed:', nomErr);
+            setIsSyncing(false);
+            return { success: false, error: `Step 3 (Nominees) Failed: [${nomErr.code || 'DB_ERR'}] ${nomErr.message}` };
           }
         }
 
@@ -1614,16 +1643,22 @@ export const BatchProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
           if (attErr) {
             console.error('Import Step 4 (Attendance) Failed:', attErr);
+            setIsSyncing(false);
+            return { success: false, error: `Step 4 (Attendance) Failed: [${attErr.code || 'DB_ERR'}] ${attErr.message}` };
           }
         }
 
         // Step 5: Import History
-        await executeWithSchemaRetry(
+        const { error: histErr } = await executeWithSchemaRetry(
           payload => supabase.from('training_batch_import_history').insert(payload),
           mapImportHistoryToDb(logRecord)
         );
 
-        console.log('IMPORT RESULT', { 
+        if (histErr) {
+          console.warn('Import Step 5 (History Log) Notice:', histErr);
+        }
+
+        console.log('IMPORT RESULT SUCCESSFUL', { 
           batches: preparedBatches.length, 
           schedules: scheduleRecordsToInsert.length,
           nominees: nomineeRecordsToInsert.length,

@@ -4,7 +4,7 @@ import { ActiveTab } from '../../types';
 import { 
   LayoutDashboard, CheckSquare, Calendar, BarChart3, 
   FileText, Users, Settings, ChevronLeft, ChevronRight, GraduationCap,
-  Layers, TrendingUp, ClipboardCheck, UserCheck
+  Layers, TrendingUp, ClipboardCheck, UserCheck, Target
 } from 'lucide-react';
 import { UserAvatar } from '../common/UserAvatar';
 
@@ -23,7 +23,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, setCollapsed }) => 
     { id: 'training', label: 'Training Management', icon: <GraduationCap className="w-5 h-5" /> },
     { id: 'batches', label: 'Training Batches', icon: <Layers className="w-5 h-5" /> },
     { id: 'attendance', label: 'Attendance', icon: <ClipboardCheck className="w-5 h-5" /> },
-    { id: 'employees', label: 'Employee Profiles', icon: <UserCheck className="w-5 h-5" /> },
+    { id: 'employees', label: 'Employees / HR Master', icon: <UserCheck className="w-5 h-5" /> },
+    { id: 'skill-matrix', label: 'Skill Matrix', icon: <Target className="w-5 h-5" /> },
     { id: 'calendar', label: 'Training Calendar', icon: <Calendar className="w-5 h-5" /> },
     { id: 'gantt', label: 'Gantt Timeline', icon: <BarChart3 className="w-5 h-5" /> },
     { id: 'reports', label: 'Reports & Audits', icon: <FileText className="w-5 h-5" /> },
@@ -32,9 +33,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, setCollapsed }) => 
   ];
 
   const visibleNavItems = navItems.filter(item => {
-    // Management role can only access: Task Dashboard, Training Dashboard, Reports & Audits
+    // Management role can view: Task Dashboard, Training Dashboard, Employees / HR Master, Skill Matrix, Reports & Audits
     if (currentUser.role === 'Management') {
-      return item.id === 'dashboard' || item.id === 'training-dashboard' || item.id === 'reports';
+      return item.id === 'dashboard' || item.id === 'training-dashboard' || item.id === 'employees' || item.id === 'skill-matrix' || item.id === 'reports';
     }
     // Administrator only items
     if (item.adminOnly && currentUser.role !== 'Administrator') {

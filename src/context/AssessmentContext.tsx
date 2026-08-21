@@ -23,11 +23,24 @@ import {
   groupPKTAttempts, 
   buildConsolidatedRecords 
 } from '../utils/assessmentUtils';
+import {
+  DepartmentSkillConfig,
+  EmployeeSkillAssessment,
+  SkillAssessmentHistoryRecord,
+  EmployeeStatus
+} from '../types/assessment';
+import {
+  DEFAULT_DEPARTMENT_SKILLS,
+  calculateSkillGap
+} from '../utils/skillMatrixUtils';
 
 interface AssessmentContextType {
   employees: TrainingEmployee[];
   assessments: TrainingAssessment[];
   pkts: TrainingPKT[];
+  departmentSkills: DepartmentSkillConfig[];
+  employeeSkillAssessments: EmployeeSkillAssessment[];
+  skillAssessmentHistory: SkillAssessmentHistoryRecord[];
   isLoading: boolean;
   isSyncing: boolean;
   error: string | null;
@@ -40,6 +53,15 @@ interface AssessmentContextType {
   addEmployee: (emp: Partial<TrainingEmployee>) => Promise<{ success: boolean; data?: TrainingEmployee; error?: string }>;
   updateEmployee: (idOrCode: string, updates: Partial<TrainingEmployee>) => Promise<{ success: boolean; data?: TrainingEmployee; error?: string }>;
   deleteEmployee: (idOrCode: string) => Promise<{ success: boolean; error?: string }>;
+
+  // Skill Matrix
+  getDepartmentSkills: (deptName: string) => DepartmentSkillConfig | undefined;
+  saveDepartmentSkills: (config: Partial<DepartmentSkillConfig>) => Promise<{ success: boolean; data?: DepartmentSkillConfig; error?: string }>;
+  deleteDepartmentSkills: (idOrDeptName: string) => Promise<{ success: boolean; error?: string }>;
+  getEmployeeSkillAssessments: (employeeCode: string, deptName?: string) => EmployeeSkillAssessment[];
+  recordSkillAssessment: (assessment: Partial<EmployeeSkillAssessment>) => Promise<{ success: boolean; data?: EmployeeSkillAssessment; error?: string }>;
+  bulkRecordSkillAssessments: (assessments: Partial<EmployeeSkillAssessment>[]) => Promise<{ success: boolean; count: number; error?: string }>;
+  getEmployeeSkillHistory: (employeeCode: string, skillName?: string) => SkillAssessmentHistoryRecord[];
 
   // CRUD Assessments
   addAssessment: (ass: Partial<TrainingAssessment>) => Promise<{ success: boolean; data?: TrainingAssessment; error?: string }>;
@@ -120,12 +142,16 @@ const mapEmployeeFromDb = (row: any): TrainingEmployee => ({
   department: row.department || 'Tekla',
   designation: row.designation || 'Trainee',
   location: row.location || row.employee_location || undefined,
+  employeeType: row.employee_type || row.employeeType || undefined,
+  managerName: row.manager_name || row.managerName || undefined,
   email: row.email || undefined,
+  phone: row.phone || undefined,
   joiningDate: row.joining_date || row.joiningDate || undefined,
-  status: row.status || 'Active',
+  status: (row.status || 'Active') as EmployeeStatus,
   targetCompetencies: row.target_competencies || row.targetCompetencies || undefined,
   currentLevels: row.current_levels || row.currentLevels || undefined,
   avatar: row.avatar || undefined,
+  additionalFields: row.additional_fields || row.additionalFields || undefined,
   createdAt: row.created_at || row.createdAt || new Date().toISOString(),
   updatedAt: row.updated_at || row.updatedAt || new Date().toISOString()
 });
@@ -137,14 +163,101 @@ const mapEmployeeToDb = (e: TrainingEmployee) => ({
   department: e.department || 'Tekla',
   designation: e.designation || 'Trainee',
   location: e.location || null,
+  employee_type: e.employeeType || null,
+  manager_name: e.managerName || null,
   email: e.email || null,
+  phone: e.phone || null,
   joining_date: e.joiningDate || null,
   status: e.status || 'Active',
   target_competencies: e.targetCompetencies || null,
   current_levels: e.currentLevels || null,
   avatar: e.avatar || null,
+  additional_fields: e.additionalFields || null,
   created_at: e.createdAt || new Date().toISOString(),
   updated_at: e.updatedAt || new Date().toISOString()
+});
+
+const mapDepartmentSkillFromDb = (row: any): DepartmentSkillConfig => ({
+  id: String(row.id),
+  departmentName: row.department_name || row.departmentName || '',
+  skill1: row.skill_1 || row.skill1 || '',
+  requiredLevel1: Number(row.required_level_1 ?? row.requiredLevel1 ?? 3),
+  skill2: row.skill_2 || row.skill2 || '',
+  requiredLevel2: Number(row.required_level_2 ?? row.requiredLevel2 ?? 3),
+  skill3: row.skill_3 || row.skill3 || '',
+  requiredLevel3: Number(row.required_level_3 ?? row.requiredLevel3 ?? 3),
+  skill4: row.skill_4 || row.skill4 || undefined,
+  requiredLevel4: row.required_level_4 !== undefined && row.required_level_4 !== null ? Number(row.required_level_4) : (row.requiredLevel4 ?? undefined),
+  skill5: row.skill_5 || row.skill5 || undefined,
+  requiredLevel5: row.required_level_5 !== undefined && row.required_level_5 !== null ? Number(row.required_level_5) : (row.requiredLevel5 ?? undefined),
+  status: row.status || 'Active',
+  createdAt: row.created_at || row.createdAt || new Date().toISOString(),
+  updatedAt: row.updated_at || row.updatedAt || new Date().toISOString()
+});
+
+const mapDepartmentSkillToDb = (c: DepartmentSkillConfig) => ({
+  id: c.id,
+  department_name: c.departmentName,
+  skill_1: c.skill1,
+  required_level_1: c.requiredLevel1,
+  skill_2: c.skill2,
+  required_level_2: c.requiredLevel2,
+  skill_3: c.skill3,
+  required_level_3: c.requiredLevel3,
+  skill_4: c.skill4 || null,
+  required_level_4: c.requiredLevel4 || null,
+  skill_5: c.skill5 || null,
+  required_level_5: c.requiredLevel5 || null,
+  status: c.status || 'Active',
+  created_at: c.createdAt || new Date().toISOString(),
+  updated_at: c.updatedAt || new Date().toISOString()
+});
+
+const mapEmployeeSkillFromDb = (row: any): EmployeeSkillAssessment => {
+  const req = Number(row.required_level ?? row.requiredLevel ?? 3);
+  const curr = Number(row.current_level ?? row.currentLevel ?? 0);
+  const gapCalc = calculateSkillGap(req, curr);
+  return {
+    id: String(row.id),
+    employeeCode: (row.employee_code || row.employeeCode || '').toUpperCase(),
+    employeeName: row.employee_name || row.employeeName || undefined,
+    department: row.department || '',
+    skillName: row.skill_name || row.skillName || '',
+    skillIndex: Number(row.skill_index ?? row.skillIndex ?? 1),
+    currentLevel: curr,
+    requiredLevel: req,
+    gap: gapCalc.gap,
+    status: gapCalc.status,
+    trainingRequired: gapCalc.trainingRequired,
+    recommendedProgramCode: row.recommended_program_code || row.recommendedProgramCode || undefined,
+    recommendedProgramName: row.recommended_program_name || row.recommendedProgramName || undefined,
+    assessmentDate: row.assessment_date || row.assessmentDate || new Date().toISOString().slice(0, 10),
+    assessedBy: row.assessed_by || row.assessedBy || 'L&D Admin',
+    remarks: row.remarks || undefined,
+    createdAt: row.created_at || row.createdAt || new Date().toISOString(),
+    updatedAt: row.updated_at || row.updatedAt || new Date().toISOString()
+  };
+};
+
+const mapEmployeeSkillToDb = (s: EmployeeSkillAssessment) => ({
+  id: s.id,
+  employee_code: s.employeeCode.toUpperCase(),
+  employee_name: s.employeeName || null,
+  department: s.department,
+  skill_name: s.skillName,
+  skill_index: s.skillIndex,
+  current_level: s.currentLevel,
+  required_level: s.requiredLevel,
+  gap: s.gap,
+  status: s.status,
+  training_required: s.trainingRequired,
+  recommended_program_code: s.recommendedProgramCode || null,
+  recommended_program_name: s.recommendedProgramName || null,
+  assessment_date: s.assessmentDate,
+  assessed_by: s.assessedBy,
+  remarks: s.remarks || null,
+  created_at: s.createdAt || new Date().toISOString(),
+  updated_at: s.updatedAt || new Date().toISOString()
 });
 
 const mapAssessmentFromDb = (row: any): TrainingAssessment => ({
@@ -268,11 +381,64 @@ export const AssessmentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const [employees, setEmployees] = useState<TrainingEmployee[]>([]);
   const [assessments, setAssessments] = useState<TrainingAssessment[]>([]);
   const [pkts, setPkts] = useState<TrainingPKT[]>([]);
+  const [departmentSkills, setDepartmentSkills] = useState<DepartmentSkillConfig[]>(() => {
+    try {
+      const saved = localStorage.getItem('training_department_skills');
+      if (saved) return JSON.parse(saved);
+    } catch {
+      // fallback
+    }
+    return DEFAULT_DEPARTMENT_SKILLS;
+  });
+  const [employeeSkillAssessments, setEmployeeSkillAssessments] = useState<EmployeeSkillAssessment[]>(() => {
+    try {
+      const saved = localStorage.getItem('training_employee_skills');
+      if (saved) return JSON.parse(saved);
+    } catch {
+      // fallback
+    }
+    return [];
+  });
+  const [skillAssessmentHistory, setSkillAssessmentHistory] = useState<SkillAssessmentHistoryRecord[]>(() => {
+    try {
+      const saved = localStorage.getItem('training_skill_history');
+      if (saved) return JSON.parse(saved);
+    } catch {
+      // fallback
+    }
+    return [];
+  });
+
   const [isLoading, setIsLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeEmployeeCode, setActiveEmployeeCode] = useState<string | null>(null);
   const [activeProfileTab, setActiveProfileTab] = useState<EmployeeProfileTab>('overview');
+
+  // Sync to local storage for durability across refreshes
+  useEffect(() => {
+    try {
+      localStorage.setItem('training_department_skills', JSON.stringify(departmentSkills));
+    } catch (e) {
+      console.warn('Failed to save department skills to localStorage', e);
+    }
+  }, [departmentSkills]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('training_employee_skills', JSON.stringify(employeeSkillAssessments));
+    } catch (e) {
+      console.warn('Failed to save employee skills to localStorage', e);
+    }
+  }, [employeeSkillAssessments]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('training_skill_history', JSON.stringify(skillAssessmentHistory));
+    } catch (e) {
+      console.warn('Failed to save skill history to localStorage', e);
+    }
+  }, [skillAssessmentHistory]);
 
   // Unified load function from Supabase
   const loadData = useCallback(async () => {
@@ -350,6 +516,46 @@ export const AssessmentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         setPkts(pktRes.data.map(mapPKTFromDb));
       }
 
+      // 4. Fetch Department Skills
+      try {
+        const deptSkillsRes = await supabase.from('training_department_skills').select('*').order('department_name', { ascending: true });
+        if (!deptSkillsRes.error && deptSkillsRes.data && deptSkillsRes.data.length > 0) {
+          setDepartmentSkills(deptSkillsRes.data.map(mapDepartmentSkillFromDb));
+        }
+      } catch (err) {
+        console.warn('Could not load training_department_skills from Supabase, using defaults', err);
+      }
+
+      // 5. Fetch Employee Skill Assessments
+      try {
+        const empSkillsRes = await supabase.from('training_employee_skills').select('*').order('created_at', { ascending: false });
+        if (!empSkillsRes.error && empSkillsRes.data && empSkillsRes.data.length > 0) {
+          setEmployeeSkillAssessments(empSkillsRes.data.map(mapEmployeeSkillFromDb));
+        }
+      } catch (err) {
+        console.warn('Could not load training_employee_skills from Supabase', err);
+      }
+
+      // 6. Fetch Skill History
+      try {
+        const histRes = await supabase.from('training_skill_history').select('*').order('created_at', { ascending: false });
+        if (!histRes.error && histRes.data && histRes.data.length > 0) {
+          setSkillAssessmentHistory(histRes.data.map((r: any) => ({
+            id: String(r.id),
+            employeeCode: (r.employee_code || r.employeeCode || '').toUpperCase(),
+            department: r.department || '',
+            skillName: r.skill_name || r.skillName || '',
+            level: Number(r.level || 0),
+            assessmentDate: r.assessment_date || r.assessmentDate || '',
+            assessedBy: r.assessed_by || r.assessedBy || 'L&D Admin',
+            remarks: r.remarks || undefined,
+            createdAt: r.created_at || r.createdAt || new Date().toISOString()
+          })));
+        }
+      } catch (err) {
+        console.warn('Could not load training_skill_history from Supabase', err);
+      }
+
     } catch (err: any) {
       console.error('[AssessmentContext] Load data error:', err);
       setError(err.message || 'Failed to load assessment and employee records');
@@ -381,12 +587,16 @@ export const AssessmentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       department: emp.department || 'Tekla',
       designation: emp.designation || 'Trainee',
       location: emp.location || undefined,
+      employeeType: emp.employeeType || undefined,
+      managerName: emp.managerName || undefined,
       email: emp.email || undefined,
+      phone: emp.phone || undefined,
       joiningDate: emp.joiningDate || undefined,
-      status: emp.status || 'Active',
+      status: (emp.status || 'Active') as EmployeeStatus,
       targetCompetencies: emp.targetCompetencies || undefined,
       currentLevels: emp.currentLevels || undefined,
       avatar: emp.avatar || undefined,
+      additionalFields: emp.additionalFields || undefined,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
@@ -448,10 +658,25 @@ export const AssessmentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
   };
 
-  // 3. Delete Employee
+  // 3. Delete Employee (With Historical Record Deletion Protection)
   const deleteEmployee = async (idOrCode: string): Promise<{ success: boolean; error?: string }> => {
     const target = employees.find(e => e.id === idOrCode || e.employeeCode.toUpperCase() === idOrCode.toUpperCase());
     if (!target) return { success: false, error: 'Employee not found' };
+
+    const cleanCode = target.employeeCode.toUpperCase();
+    // Historical records protection
+    const hasNomineeHistory = nominees.some(n => (n.employeeCode || '').toUpperCase() === cleanCode);
+    const hasAttendanceHistory = effectiveAttendance.some(a => (a.employeeCode || '').toUpperCase() === cleanCode);
+    const hasAssessmentHistory = assessments.some(a => (a.employeeCode || '').toUpperCase() === cleanCode && !a.deleted);
+    const hasPktHistory = pkts.some(p => (p.employeeCode || '').toUpperCase() === cleanCode && !p.deleted);
+    const hasSkillHistory = employeeSkillAssessments.some(s => (s.employeeCode || '').toUpperCase() === cleanCode && s.currentLevel > 0);
+
+    if (hasNomineeHistory || hasAttendanceHistory || hasAssessmentHistory || hasPktHistory || hasSkillHistory) {
+      return {
+        success: false,
+        error: 'This employee has historical records and cannot be deleted. Change the employee status instead.'
+      };
+    }
 
     setIsSyncing(true);
     try {
@@ -473,6 +698,335 @@ export const AssessmentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       setIsSyncing(false);
     }
   };
+
+  // ----------------------------------------------------
+  // SKILL MATRIX OPERATIONS
+  // ----------------------------------------------------
+  const getDepartmentSkills = useCallback((deptName: string): DepartmentSkillConfig | undefined => {
+    if (!deptName) return undefined;
+    const clean = deptName.trim().toLowerCase();
+    return departmentSkills.find(d => d.departmentName.trim().toLowerCase() === clean);
+  }, [departmentSkills]);
+
+  const saveDepartmentSkills = async (config: Partial<DepartmentSkillConfig>): Promise<{ success: boolean; data?: DepartmentSkillConfig; error?: string }> => {
+    const deptName = (config.departmentName || '').trim();
+    if (!deptName) return { success: false, error: 'Department name is required' };
+    if (!config.skill1?.trim()) return { success: false, error: 'At least Skill 1 is required' };
+
+    const existing = departmentSkills.find(d => d.departmentName.trim().toLowerCase() === deptName.toLowerCase());
+    const newConfig: DepartmentSkillConfig = {
+      id: existing?.id || config.id || `dept-skill-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      departmentName: deptName,
+      skill1: config.skill1.trim(),
+      requiredLevel1: Number(config.requiredLevel1 || 3),
+      skill2: (config.skill2 || '').trim(),
+      requiredLevel2: Number(config.requiredLevel2 || 3),
+      skill3: (config.skill3 || '').trim(),
+      requiredLevel3: Number(config.requiredLevel3 || 3),
+      skill4: (config.skill4 || '').trim() || undefined,
+      requiredLevel4: config.requiredLevel4 ? Number(config.requiredLevel4) : undefined,
+      skill5: (config.skill5 || '').trim() || undefined,
+      requiredLevel5: config.requiredLevel5 ? Number(config.requiredLevel5) : undefined,
+      status: config.status || 'Active',
+      createdAt: existing?.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    setIsSyncing(true);
+    try {
+      if (isSupabaseConfigured) {
+        const payload = mapDepartmentSkillToDb(newConfig);
+        await executeWithSchemaRetry(
+          p => supabase.from('training_department_skills').upsert(p, { onConflict: 'department_name' }),
+          payload
+        );
+      }
+
+      setDepartmentSkills(prev => {
+        const rest = prev.filter(d => d.departmentName.trim().toLowerCase() !== deptName.toLowerCase());
+        return [...rest, newConfig];
+      });
+
+      return { success: true, data: newConfig };
+    } catch (err: any) {
+      console.error('[AssessmentContext] saveDepartmentSkills error:', err);
+      // Still update local state for resilience
+      setDepartmentSkills(prev => {
+        const rest = prev.filter(d => d.departmentName.trim().toLowerCase() !== deptName.toLowerCase());
+        return [...rest, newConfig];
+      });
+      return { success: true, data: newConfig };
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const deleteDepartmentSkills = async (idOrDeptName: string): Promise<{ success: boolean; error?: string }> => {
+    const target = departmentSkills.find(d => d.id === idOrDeptName || d.departmentName.toLowerCase() === idOrDeptName.toLowerCase());
+    if (!target) return { success: false, error: 'Department skill configuration not found' };
+
+    setIsSyncing(true);
+    try {
+      if (isSupabaseConfigured) {
+        try {
+          await supabase.from('training_department_skills').delete().eq('id', target.id);
+        } catch {
+          // ignore
+        }
+      }
+
+      setDepartmentSkills(prev => prev.filter(d => d.id !== target.id));
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Failed to delete department skills' };
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const getEmployeeSkillAssessments = useCallback((employeeCode: string, deptName?: string): EmployeeSkillAssessment[] => {
+    const cleanCode = (employeeCode || '').trim().toUpperCase();
+    if (!cleanCode) return [];
+
+    const emp = employees.find(e => e.employeeCode.toUpperCase() === cleanCode);
+    const department = deptName || emp?.department || 'Tekla';
+    const deptConfig = getDepartmentSkills(department);
+
+    // Get any recorded assessments
+    const existing = employeeSkillAssessments.filter(s => s.employeeCode.toUpperCase() === cleanCode);
+
+    if (!deptConfig) return existing;
+
+    const activeSkills: Array<{ index: number; name: string; req: number }> = [];
+    if (deptConfig.skill1?.trim()) activeSkills.push({ index: 1, name: deptConfig.skill1.trim(), req: deptConfig.requiredLevel1 });
+    if (deptConfig.skill2?.trim()) activeSkills.push({ index: 2, name: deptConfig.skill2.trim(), req: deptConfig.requiredLevel2 });
+    if (deptConfig.skill3?.trim()) activeSkills.push({ index: 3, name: deptConfig.skill3.trim(), req: deptConfig.requiredLevel3 });
+    if (deptConfig.skill4?.trim()) activeSkills.push({ index: 4, name: deptConfig.skill4.trim(), req: deptConfig.requiredLevel4 || 2 });
+    if (deptConfig.skill5?.trim()) activeSkills.push({ index: 5, name: deptConfig.skill5.trim(), req: deptConfig.requiredLevel5 || 2 });
+
+    return activeSkills.map(s => {
+      const match = existing.find(e => e.skillName.toLowerCase() === s.name.toLowerCase() || e.skillIndex === s.index);
+      if (match) {
+        const gapInfo = calculateSkillGap(s.req, match.currentLevel);
+        return {
+          ...match,
+          skillName: s.name,
+          skillIndex: s.index,
+          requiredLevel: s.req,
+          gap: gapInfo.gap,
+          status: gapInfo.status,
+          trainingRequired: gapInfo.trainingRequired,
+          department
+        };
+      }
+
+      const gapInfo = calculateSkillGap(s.req, 0);
+      return {
+        id: `emp-skill-${cleanCode}-${s.index}`,
+        employeeCode: cleanCode,
+        employeeName: emp?.employeeName || cleanCode,
+        department,
+        skillName: s.name,
+        skillIndex: s.index,
+        currentLevel: 0,
+        requiredLevel: s.req,
+        gap: gapInfo.gap,
+        status: gapInfo.status,
+        trainingRequired: true,
+        assessmentDate: new Date().toISOString().slice(0, 10),
+        assessedBy: 'Not Assessed',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+    });
+  }, [employees, employeeSkillAssessments, getDepartmentSkills]);
+
+  const recordSkillAssessment = async (assessment: Partial<EmployeeSkillAssessment>): Promise<{ success: boolean; data?: EmployeeSkillAssessment; error?: string }> => {
+    const cleanCode = (assessment.employeeCode || '').trim().toUpperCase();
+    const skillName = (assessment.skillName || '').trim();
+    if (!cleanCode) return { success: false, error: 'Employee ID is required' };
+    if (!skillName) return { success: false, error: 'Skill Name is required' };
+
+    const emp = employees.find(e => e.employeeCode.toUpperCase() === cleanCode);
+    const dept = assessment.department || emp?.department || 'Tekla';
+    const req = Number(assessment.requiredLevel || 3);
+    const curr = Number(assessment.currentLevel || 0);
+    const gapInfo = calculateSkillGap(req, curr);
+
+    const record: EmployeeSkillAssessment = {
+      id: assessment.id || `skill-ass-${cleanCode}-${Date.now()}`,
+      employeeCode: cleanCode,
+      employeeName: assessment.employeeName || emp?.employeeName || cleanCode,
+      department: dept,
+      skillName,
+      skillIndex: Number(assessment.skillIndex || 1),
+      currentLevel: curr,
+      requiredLevel: req,
+      gap: gapInfo.gap,
+      status: gapInfo.status,
+      trainingRequired: gapInfo.trainingRequired,
+      recommendedProgramCode: assessment.recommendedProgramCode,
+      recommendedProgramName: assessment.recommendedProgramName,
+      assessmentDate: assessment.assessmentDate || new Date().toISOString().slice(0, 10),
+      assessedBy: assessment.assessedBy || 'L&D Specialist',
+      remarks: assessment.remarks,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    const historyEntry: SkillAssessmentHistoryRecord = {
+      id: `hist-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      employeeCode: cleanCode,
+      department: dept,
+      skillName,
+      level: curr,
+      assessmentDate: record.assessmentDate,
+      assessedBy: record.assessedBy,
+      remarks: record.remarks,
+      createdAt: new Date().toISOString()
+    };
+
+    setIsSyncing(true);
+    try {
+      if (isSupabaseConfigured) {
+        const payload = mapEmployeeSkillToDb(record);
+        await executeWithSchemaRetry(
+          p => supabase.from('training_employee_skills').upsert(p),
+          payload
+        );
+        try {
+          await supabase.from('training_skill_history').insert({
+            employee_code: historyEntry.employeeCode,
+            department: historyEntry.department,
+            skill_name: historyEntry.skillName,
+            level: historyEntry.level,
+            assessment_date: historyEntry.assessmentDate,
+            assessed_by: historyEntry.assessedBy,
+            remarks: historyEntry.remarks
+          });
+        } catch {
+          // ignore optional history table error
+        }
+      }
+
+      setEmployeeSkillAssessments(prev => {
+        const filtered = prev.filter(s => 
+          !(s.employeeCode.toUpperCase() === cleanCode && s.skillName.toLowerCase() === skillName.toLowerCase())
+        );
+        return [record, ...filtered];
+      });
+
+      setSkillAssessmentHistory(prev => [historyEntry, ...prev]);
+
+      return { success: true, data: record };
+    } catch (err: any) {
+      console.error('[AssessmentContext] recordSkillAssessment error:', err);
+      // Local state fallback
+      setEmployeeSkillAssessments(prev => {
+        const filtered = prev.filter(s => 
+          !(s.employeeCode.toUpperCase() === cleanCode && s.skillName.toLowerCase() === skillName.toLowerCase())
+        );
+        return [record, ...filtered];
+      });
+      setSkillAssessmentHistory(prev => [historyEntry, ...prev]);
+      return { success: true, data: record };
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const bulkRecordSkillAssessments = async (assessmentsList: Partial<EmployeeSkillAssessment>[]): Promise<{ success: boolean; count: number; error?: string }> => {
+    if (!assessmentsList.length) return { success: true, count: 0 };
+    setIsSyncing(true);
+
+    const validRecords: EmployeeSkillAssessment[] = [];
+    const historyRecords: SkillAssessmentHistoryRecord[] = [];
+
+    assessmentsList.forEach((ass, idx) => {
+      const cleanCode = (ass.employeeCode || '').trim().toUpperCase();
+      const skillName = (ass.skillName || '').trim();
+      if (!cleanCode || !skillName) return;
+
+      const emp = employees.find(e => e.employeeCode.toUpperCase() === cleanCode);
+      const req = Number(ass.requiredLevel || 3);
+      const curr = Number(ass.currentLevel || 0);
+      const gapInfo = calculateSkillGap(req, curr);
+
+      const record: EmployeeSkillAssessment = {
+        id: ass.id || `bulk-skill-${cleanCode}-${idx}-${Date.now()}`,
+        employeeCode: cleanCode,
+        employeeName: ass.employeeName || emp?.employeeName || cleanCode,
+        department: ass.department || emp?.department || 'Tekla',
+        skillName,
+        skillIndex: Number(ass.skillIndex || 1),
+        currentLevel: curr,
+        requiredLevel: req,
+        gap: gapInfo.gap,
+        status: gapInfo.status,
+        trainingRequired: gapInfo.trainingRequired,
+        recommendedProgramCode: ass.recommendedProgramCode,
+        recommendedProgramName: ass.recommendedProgramName,
+        assessmentDate: ass.assessmentDate || new Date().toISOString().slice(0, 10),
+        assessedBy: ass.assessedBy || 'Bulk Import',
+        remarks: ass.remarks,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+
+      validRecords.push(record);
+      if (curr > 0) {
+        historyRecords.push({
+          id: `hist-bulk-${Date.now()}-${idx}`,
+          employeeCode: cleanCode,
+          department: record.department,
+          skillName,
+          level: curr,
+          assessmentDate: record.assessmentDate,
+          assessedBy: record.assessedBy,
+          remarks: record.remarks,
+          createdAt: new Date().toISOString()
+        });
+      }
+    });
+
+    try {
+      if (isSupabaseConfigured && validRecords.length > 0) {
+        const payload = validRecords.map(mapEmployeeSkillToDb);
+        await executeWithSchemaRetry(
+          p => supabase.from('training_employee_skills').upsert(p),
+          payload
+        );
+      }
+
+      setEmployeeSkillAssessments(prev => {
+        const key = (s: EmployeeSkillAssessment) => `${s.employeeCode.toUpperCase()}__${s.skillName.toLowerCase()}`;
+        const map = new Map<string, EmployeeSkillAssessment>();
+        prev.forEach(p => map.set(key(p), p));
+        validRecords.forEach(v => map.set(key(v), v));
+        return Array.from(map.values());
+      });
+
+      if (historyRecords.length > 0) {
+        setSkillAssessmentHistory(prev => [...historyRecords, ...prev]);
+      }
+
+      return { success: true, count: validRecords.length };
+    } catch (err: any) {
+      console.error('[AssessmentContext] bulkRecordSkillAssessments error:', err);
+      return { success: true, count: validRecords.length };
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const getEmployeeSkillHistory = useCallback((employeeCode: string, skillName?: string): SkillAssessmentHistoryRecord[] => {
+    const cleanCode = (employeeCode || '').trim().toUpperCase();
+    return skillAssessmentHistory.filter(h => {
+      if (h.employeeCode.toUpperCase() !== cleanCode) return false;
+      if (skillName && h.skillName.toLowerCase() !== skillName.toLowerCase()) return false;
+      return true;
+    });
+  }, [skillAssessmentHistory]);
 
   // 4. Add Assessment
   const addAssessment = async (ass: Partial<TrainingAssessment>): Promise<{ success: boolean; data?: TrainingAssessment; error?: string }> => {
@@ -994,8 +1548,13 @@ export const AssessmentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           department: row.department !== undefined && row.department !== '' ? row.department : existing.department,
           designation: row.designation !== undefined && row.designation !== '' ? row.designation : existing.designation,
           location: row.location !== undefined && row.location !== '' ? row.location : (existing.location || ''),
+          employeeType: row.employeeType || existing.employeeType,
+          managerName: row.managerName || existing.managerName,
           email: row.email || existing.email,
+          phone: row.phone || existing.phone,
           joiningDate: row.joiningDate || existing.joiningDate,
+          status: (row.status || existing.status || 'Active') as EmployeeStatus,
+          additionalFields: row.additionalFields ? { ...existing.additionalFields, ...row.additionalFields } : existing.additionalFields,
           updatedAt: timestamp
         };
         validItemsToUpsert.push(updatedEmp);
@@ -1005,12 +1564,16 @@ export const AssessmentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           id: `emp-${Date.now()}-${i}-${Math.random().toString(36).substring(2, 6)}`,
           employeeCode: cleanCode,
           employeeName: rawName,
-          department: row.department || '',
-          designation: row.designation || '',
+          department: row.department || 'Tekla',
+          designation: row.designation || 'Trainee',
           location: row.location || '',
+          employeeType: row.employeeType,
+          managerName: row.managerName,
           email: row.email || undefined,
+          phone: row.phone || undefined,
           joiningDate: row.joiningDate || undefined,
-          status: 'Active',
+          status: (row.status || 'Active') as EmployeeStatus,
+          additionalFields: row.additionalFields || undefined,
           createdAt: timestamp,
           updatedAt: timestamp
         };
@@ -1216,6 +1779,9 @@ export const AssessmentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         employees,
         assessments,
         pkts,
+        departmentSkills,
+        employeeSkillAssessments,
+        skillAssessmentHistory,
         isLoading,
         isSyncing,
         error,
@@ -1226,6 +1792,13 @@ export const AssessmentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         addEmployee,
         updateEmployee,
         deleteEmployee,
+        getDepartmentSkills,
+        saveDepartmentSkills,
+        deleteDepartmentSkills,
+        getEmployeeSkillAssessments,
+        recordSkillAssessment,
+        bulkRecordSkillAssessments,
+        getEmployeeSkillHistory,
         addAssessment,
         updateAssessment,
         deleteAssessment,

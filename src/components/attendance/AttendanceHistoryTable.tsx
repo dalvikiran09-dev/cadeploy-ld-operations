@@ -25,6 +25,7 @@ import {
 import { useBatch } from '../../context/BatchContext';
 import { useApp } from '../../context/AppContext';
 import { useTraining } from '../../context/TrainingContext';
+import { useAssessment } from '../../context/AssessmentContext';
 import { UserAvatar } from '../common/UserAvatar';
 import { 
   TrainingAttendanceRecord, 
@@ -56,6 +57,7 @@ export const AttendanceHistoryTable: React.FC<AttendanceHistoryTableProps> = ({
     isSyncing 
   } = useBatch();
   const { users, currentUser } = useApp();
+  const { employees } = useAssessment();
   const { programs, courses, modules } = useTraining();
 
   const isAdmin = currentUser?.role === 'Administrator';
@@ -207,7 +209,7 @@ export const AttendanceHistoryTable: React.FC<AttendanceHistoryTableProps> = ({
   const employeeHistoryData = useMemo(() => {
     if (!selectedEmployeeProfile) return null;
     const history = getEmployeeAttendanceHistory(selectedEmployeeProfile, batches, attendance, programs, modules);
-    const details = resolveEmployeeDetails(selectedEmployeeProfile, users, nominees);
+    const details = resolveEmployeeDetails(selectedEmployeeProfile, employees, users);
     
     let present = 0;
     let absent = 0;
@@ -234,7 +236,7 @@ export const AttendanceHistoryTable: React.FC<AttendanceHistoryTableProps> = ({
       rate,
       distinctBatches
     };
-  }, [selectedEmployeeProfile, batches, attendance, programs, modules, users, nominees]);
+  }, [selectedEmployeeProfile, batches, attendance, programs, modules, employees, users]);
 
   // Select all / Deselect visible
   const handleSelectAllVisible = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -304,7 +306,7 @@ export const AttendanceHistoryTable: React.FC<AttendanceHistoryTableProps> = ({
       const batch = batches.find(b => b.id === rec.batchId || b.batchCode === rec.batchCode);
       const program = programs.find(p => p.programCode?.toUpperCase() === batch?.programCode?.toUpperCase());
       const modObj = modules.find(m => m.moduleCode?.toUpperCase() === rec.moduleCode?.toUpperCase());
-      const details = resolveEmployeeDetails(rec.employeeCode, users, nominees);
+      const details = resolveEmployeeDetails(rec.employeeCode, employees, users);
 
       return {
         batchCode: rec.batchCode || batch?.batchCode || rec.batchId,
@@ -606,7 +608,7 @@ export const AttendanceHistoryTable: React.FC<AttendanceHistoryTableProps> = ({
                   const batch = batches.find(b => b.id === rec.batchId || b.batchCode === rec.batchCode);
                   const program = programs.find(p => p.programCode?.toUpperCase() === batch?.programCode?.toUpperCase());
                   const modObj = modules.find(m => m.moduleCode?.toUpperCase() === rec.moduleCode?.toUpperCase());
-                  const details = resolveEmployeeDetails(rec.employeeCode, users, nominees);
+                  const details = resolveEmployeeDetails(rec.employeeCode, employees, users);
                   const isSelected = selectedRecordIds.includes(rec.id);
                   const normStatus = normalizeAttendanceStatus(rec.status);
 
